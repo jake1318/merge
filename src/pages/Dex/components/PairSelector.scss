@@ -1,0 +1,105 @@
+/* src/pages/Dex/components/PairSelector.scss */
+.pair-selector {
+  background: #121212;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+
+  .search-bar {
+    padding: 0.5rem;
+    input {
+      width: 100%;
+      padding: 0.4rem 0.6rem;
+      border: 1px solid #333;
+      border-radius: 4px;
+      background: #1e1e1e;
+      color: #fff;
+      font-size: 0.9rem;
+      &::placeholder {
+        color: #848e9c;
+      }
+      &:focus {
+        outline: none;
+        border-color: #f0b90b;
+        box-shadow: 0 0 5px #f0b90b;
+      }
+    }
+  }
+
+  .filter-bar {
+    display: flex;
+    border-bottom: 1px solid #333;
+    button {
+      flex: 1;
+      background: none;
+      border: none;
+      padding: 0.5rem;
+      color: #ccc;
+      cursor: pointer;
+      &.active {
+        color: #f0b90b;
+        border-bottom: 2px solid #f0b90b;
+        font-weight: 600;
+      }
+      &:hover {
+        color: #fff;
+      }
+    }
+  }
+
+  .pair-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    .pair-item {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr 1fr;
+      padding: 0.5rem 0.75rem;
+      align-items: center;
+      cursor: pointer;
+      border-bottom: 1px solid #2a2a2a;
+      &:hover {
+        background: #1e1e1e;
+      }
+      &.active {
+        background: #2a2a2a;
+        border-left: 4px solid #f0b90b;
+      }
+      .pair-symbol {
+        text-align: left;
+        .star {
+          margin-right: 4px;
+          color: #848e9c;
+          cursor: pointer;
+          &.favorite {
+            color: #f0b90b;
+          }
+          &:hover {
+            color: #f0b90b;
+          }
+        }
+      }
+      .pair-price {
+        text-align: right;
+        color: #fff;
+      }
+      .pair-change {
+        text-align: right;
+        &.positive {
+          color: #0ecb81;
+        }
+        &.negative {
+          color: #f6465d;
+        }
+        &.neutral {
+          color: #fff;
+        }
+      }
+    }
+    .no-results {
+      padding: 1rem;
+      text-align: center;
+      color: #555;
+    }
+  }
+}
