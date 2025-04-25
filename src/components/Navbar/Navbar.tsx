@@ -78,7 +78,7 @@ const Navbar: React.FC = () => {
             to="/pools"
             className={location.pathname === "/pools" ? "active" : ""}
           >
-            Pools
+            Yield
           </Link>
           <Link
             to="/dex"
@@ -181,7 +181,7 @@ const Navbar: React.FC = () => {
             className={location.pathname === "/pools" ? "active" : ""}
             onClick={() => setIsMobileMenuOpen(false)}
           >
-            Pools
+            Yield
           </Link>
           <Link
             to="/dex"

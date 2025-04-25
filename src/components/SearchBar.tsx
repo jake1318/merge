@@ -1,58 +1,66 @@
 import React from "react";
-
 import "../styles/components/SearchBar.scss";
 
 interface SearchBarProps {
   value: string;
+  onChange: (value: string) => void;
   placeholder?: string;
-  isSearching?: boolean;
-  onChange: React.ChangeEventHandler<HTMLInputElement>;
-  onSubmit: () => void;
 }
 
 const SearchBar: React.FC<SearchBarProps> = ({
   value,
-  placeholder = "",
-  isSearching = false,
   onChange,
-  onSubmit,
+  placeholder = "Search...",
 }) => {
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      onSubmit();
-    }
-  };
-
-  const handleClear = () => {
-    if (!isSearching) {
-      // Clear the search input
-      if (onChange) {
-        const event = {
-          target: { value: "" },
-        } as React.ChangeEvent<HTMLInputElement>;
-        onChange(event);
-      }
-    }
-  };
-
   return (
     <div className="search-bar">
       <div className="search-icon">
-        {/* Magnifying glass SVG icon */}
-        <svg viewBox="0 0 16 16" fill="currentColor">
-          <path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001l3.85 3.85a1 1 0 001.414-1.414l-3.85-3.85zM12 6.5A5.5 5.5 0 111 6.5a5.5 5.5 0 0111 0z" />
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M21 21L15 15M17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10Z"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
         </svg>
       </div>
+
       <input
         type="text"
         value={value}
+        onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        onChange={onChange}
-        onKeyDown={handleKeyDown}
+        className="search-input"
       />
-      {value.trim() !== "" && !isSearching && (
-        <button type="button" className="clear-button" onClick={handleClear}>
-          ×
+
+      {value && (
+        <button
+          className="clear-button"
+          onClick={() => onChange("")}
+          aria-label="Clear search"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M18 6L6 18M6 6L18 18"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </button>
       )}
     </div>
