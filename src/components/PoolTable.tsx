@@ -1,220 +1,151 @@
+// src/components/PoolTable.tsx
 import React from "react";
 import { PoolInfo } from "../services/coinGeckoService";
-import { formatDollars, formatPercentage } from "../utils/formatters";
-import { TokenLogo, PoolPair } from "./TokenLogo";
+
 import "../styles/components/PoolTable.scss";
 
 interface PoolTableProps {
   pools: PoolInfo[];
   sortColumn: "dex" | "liquidityUSD" | "volumeUSD" | "feesUSD" | "apr";
   sortOrder: "asc" | "desc";
-  onSort: (
-    column: "dex" | "liquidityUSD" | "volumeUSD" | "feesUSD" | "apr"
-  ) => void;
-  onDeposit: (pool: PoolInfo) => void;
-  supportedDex?: string[];
-  availableDexes: string[];
-  selectedDex: string | null;
+  onSortChange: (column: PoolTableProps["sortColumn"]) => void;
   onDexChange: (dex: string | null) => void;
+  onDeposit: (pool: PoolInfo) => void;
 }
-
-/** Returns a coloured-text CSS class depending on APR */
-const aprColour = (apr: number): string => {
-  if (apr >= 100) return "text-green-400";
-  if (apr >= 50) return "text-green-500";
-  if (apr >= 20) return "text-green-600";
-  return "";
-};
 
 const PoolTable: React.FC<PoolTableProps> = ({
   pools,
   sortColumn,
   sortOrder,
-  onSort,
-  onDeposit,
-  supportedDex = [],
-  availableDexes,
-  selectedDex,
+  onSortChange,
   onDexChange,
+  onDeposit,
 }) => {
-  /** Regular header cell builder */
-  const header = (
-    label: string,
-    col: PoolTableProps["sortColumn"],
-    className = ""
-  ) => (
-    <th
-      className={`py-3 px-4 cursor-pointer hover:bg-gray-800 text-left ${className} ${
-        sortColumn === col ? "bg-gray-800" : ""
-      }`}
-      onClick={() => onSort(col)}
-    >
-      {label}
-      {sortColumn === col && (
-        <span className="inline-block ml-0.5">
-          {sortOrder === "asc" ? "↑" : "↓"}
-        </span>
-      )}
-    </th>
-  );
-
-  /** DEX dropdown header cell */
-  const dexHeader = () => (
-    <th className="py-3 px-4 text-left">
-      <div className="flex items-center space-x-2">
-        <select
-          value={selectedDex || "all"}
-          onChange={(e) =>
-            onDexChange(e.target.value === "all" ? null : e.target.value)
-          }
-          className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-sm"
-        >
-          <option value="all">All DEXes</option>
-          {availableDexes.map((dex) => (
-            <option key={dex} value={dex}>
-              {dex.charAt(0).toUpperCase() + dex.slice(1)}
-            </option>
-          ))}
-        </select>
-        <span
-          className="cursor-pointer text-xs text-gray-400 hover:text-white"
-          onClick={() => onDexChange("cetus")}
-          title="Reset to Default"
-        >
-          ↺
-        </span>
-      </div>
-    </th>
-  );
-
-  // Check if a DEX is supported
-  const isDexSupported = (dex: string): boolean => {
-    return (
-      supportedDex.length === 0 || supportedDex.includes(dex.toLowerCase())
-    );
-  };
-
-  // Handle deposit button click with stop propagation
-  const handleDepositClick = (e: React.MouseEvent, pool: PoolInfo) => {
-    e.stopPropagation(); // Stop event propagation
-    console.log("Deposit button clicked for:", pool.name);
-    onDeposit(pool);
-  };
-
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full">
+    <div className="pool-table-container">
+      <table className="pool-table">
         <thead>
-          <tr className="border-b border-gray-700">
-            <th className="text-left py-3 px-4">Pool</th>
-            {dexHeader()}
-            {header("Liquidity", "liquidityUSD", "text-right")}
-            {header("Volume (24h)", "volumeUSD", "text-right")}
-            {header("Fees (24h)", "feesUSD", "text-right")}
-            {header("APR", "apr", "text-right")}
-            <th className="text-right py-3 px-4">Action</th>
+          <tr>
+            <th onClick={() => onSortChange("dex")}>
+              DEX
+              {sortColumn === "dex" && (
+                <span className="sort-indicator">
+                  {sortOrder === "asc" ? "↑" : "↓"}
+                </span>
+              )}
+            </th>
+            <th onClick={() => onSortChange("liquidityUSD")}>
+              Liquidity (USD)
+              {sortColumn === "liquidityUSD" && (
+                <span className="sort-indicator">
+                  {sortOrder === "asc" ? "↑" : "↓"}
+                </span>
+              )}
+            </th>
+            <th onClick={() => onSortChange("volumeUSD")}>
+              Volume (24h)
+              {sortColumn === "volumeUSD" && (
+                <span className="sort-indicator">
+                  {sortOrder === "asc" ? "↑" : "↓"}
+                </span>
+              )}
+            </th>
+            <th onClick={() => onSortChange("feesUSD")}>
+              Fees (24h)
+              {sortColumn === "feesUSD" && (
+                <span className="sort-indicator">
+                  {sortOrder === "asc" ? "↑" : "↓"}
+                </span>
+              )}
+            </th>
+            <th onClick={() => onSortChange("apr")}>
+              APR
+              {sortColumn === "apr" && (
+                <span className="sort-indicator">
+                  {sortOrder === "asc" ? "↑" : "↓"}
+                </span>
+              )}
+            </th>
+            <th>Action</th>
           </tr>
         </thead>
-
         <tbody>
           {pools.length === 0 ? (
             <tr>
-              <td colSpan={7} className="py-4 text-center text-gray-500">
+              <td colSpan={6} className="empty-state">
                 No pools found
               </td>
             </tr>
           ) : (
-            pools.map((pool) => (
-              <tr
-                key={pool.address}
-                className="border-b border-gray-800 hover:bg-gray-800"
-              >
-                {/* Pool column (logos + pair name + fee tier) */}
-                <td className="py-4 px-4">
-                  <div className="flex items-center gap-3">
-                    {/* Token pair logos */}
-                    <div className="flex -space-x-2">
-                      <TokenLogo
-                        logoUrl={pool.tokenAMetadata?.logo_uri}
-                        symbol={pool.tokenA}
-                      />
-                      <TokenLogo
-                        logoUrl={pool.tokenBMetadata?.logo_uri}
-                        symbol={pool.tokenB}
-                      />
+            pools.map((pool) => {
+              // Safely extract the fee tier (e.g. "0.3%") or fallback to "–"
+              const feeMatch = pool.name.match(/(\d+(\.\d+)?)%/);
+              const feeTier = feeMatch ? feeMatch[0] : "–";
+
+              return (
+                <tr key={pool.address} onClick={() => onDexChange(pool.dex)}>
+                  <td>
+                    <div className="pool-pair">
+                      <div className="token-icons">
+                        {pool.tokenAMetadata?.logoUrl ? (
+                          <img
+                            src={pool.tokenAMetadata.logoUrl}
+                            alt={pool.tokenA}
+                            className="token-logo"
+                          />
+                        ) : (
+                          <div className="token-logo placeholder">
+                            {pool.tokenA.charAt(0)}
+                          </div>
+                        )}
+                        {pool.tokenBMetadata?.logoUrl ? (
+                          <img
+                            src={pool.tokenBMetadata.logoUrl}
+                            alt={pool.tokenB}
+                            className="token-logo"
+                          />
+                        ) : (
+                          <div className="token-logo placeholder">
+                            {pool.tokenB.charAt(0)}
+                          </div>
+                        )}
+                      </div>
+                      <div className="pair-info">
+                        <div className="pair-name">{pool.name}</div>
+                        <div className="fee-tier">{feeTier}</div>
+                      </div>
                     </div>
-
-                    {/* Pair name & fee */}
-                    <div className="flex flex-col">
-                      <span className="font-medium whitespace-nowrap">
-                        {pool.tokenA} / {pool.tokenB}
-                      </span>
-
-                      {/* Fee badge if present */}
-                      {pool.name && pool.name.match(/(\d+(\.\d+)?)%/) && (
-                        <span className="fee-tier inline-block mt-0.5">
-                          {pool.name.match(/(\d+(\.\d+)?)%/)![0]}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </td>
-
-                {/* DEX column (name + reward icons) */}
-                <td className="py-4 px-4">
-                  <div className="font-medium capitalize">{pool.dex}</div>
-                  {/* Reward token badges */}
-                  {pool.rewardSymbols.length > 0 && (
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {pool.rewardSymbols.map((sym) => (
-                        <span
-                          key={sym}
-                          className="px-2 py-0.5 bg-green-900 text-green-300 rounded-full text-xs"
-                        >
-                          {sym}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </td>
-
-                {/* Numbers */}
-                <td className="text-right py-4 px-4">
-                  {formatDollars(pool.liquidityUSD)}
-                </td>
-                <td className="text-right py-4 px-4">
-                  {formatDollars(pool.volumeUSD)}
-                </td>
-                <td className="text-right py-4 px-4">
-                  {formatDollars(pool.feesUSD)}
-                </td>
-                <td className="text-right py-4 px-4">
-                  <span className={aprColour(pool.apr)}>
-                    {formatPercentage(pool.apr)}
-                  </span>
-                </td>
-
-                {/* Action */}
-                <td className="text-right py-4 px-4">
-                  <button
-                    className={`px-4 py-2 rounded transition ${
-                      isDexSupported(pool.dex)
-                        ? "btn btn--deposit"
-                        : "btn btn--coming-soon"
-                    }`}
-                    onClick={(e) => handleDepositClick(e, pool)}
-                    disabled={!isDexSupported(pool.dex)}
-                    title={
-                      !isDexSupported(pool.dex)
-                        ? `${pool.dex} pools are not yet supported`
-                        : undefined
-                    }
-                  >
-                    {isDexSupported(pool.dex) ? "Deposit" : "Coming Soon"}
-                  </button>
-                </td>
-              </tr>
-            ))
+                  </td>
+                  <td>
+                    {pool.liquidityUSD.toLocaleString(undefined, {
+                      maximumFractionDigits: 2,
+                    })}
+                  </td>
+                  <td>
+                    {pool.volumeUSD.toLocaleString(undefined, {
+                      maximumFractionDigits: 2,
+                    })}
+                  </td>
+                  <td>
+                    {pool.feesUSD.toLocaleString(undefined, {
+                      maximumFractionDigits: 2,
+                    })}
+                  </td>
+                  <td>{pool.apr.toFixed(2)}%</td>
+                  <td>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeposit(pool);
+                      }}
+                    >
+                      Deposit
+                    </button>
+                  </td>
+                </tr>
+              );
+            })
           )}
         </tbody>
       </table>

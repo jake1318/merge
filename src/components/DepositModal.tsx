@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { PoolInfo } from "../services/coinGeckoService";
 import { useWallet } from "@suiet/wallet-kit";
 
+import "../styles/components/DepositModal.scss";
+
 interface DepositModalProps {
   pool: PoolInfo;
   onConfirm: (amountA: number, amountB: number) => void;
@@ -14,6 +16,7 @@ const DepositModal: React.FC<DepositModalProps> = ({
   onClose,
 }) => {
   const wallet = useWallet();
+
   const [amountA, setAmountA] = useState("");
   const [amountB, setAmountB] = useState("");
   const [balanceA, setBalanceA] = useState<number | null>(null);
@@ -23,7 +26,6 @@ const DepositModal: React.FC<DepositModalProps> = ({
   useEffect(() => {
     async function fetchBalances() {
       if (!wallet.connected) return;
-
       try {
         setLoading(true);
         // In a real app, this would fetch the balances from the wallet
@@ -36,7 +38,6 @@ const DepositModal: React.FC<DepositModalProps> = ({
         setLoading(false);
       }
     }
-
     fetchBalances();
   }, [wallet.connected, pool]);
 
@@ -64,54 +65,55 @@ const DepositModal: React.FC<DepositModalProps> = ({
             ×
           </button>
         </div>
-
-        <div className="input-group">
-          <label>{pool.tokenA}</label>
-          <input
-            type="number"
-            value={amountA}
-            onChange={(e) => setAmountA(e.target.value)}
-            placeholder={`Enter ${pool.tokenA} amount`}
-          />
-          <div className="balance">
-            <span>
-              Balance: {loading ? "Loading..." : balanceA?.toFixed(6)}
-            </span>
-            <button className="max-button" onClick={() => handleSetMax("A")}>
-              MAX
-            </button>
+        <div className="modal-body">
+          <div className="input-group">
+            <label>{pool.tokenA}</label>
+            <input
+              type="number"
+              value={amountA}
+              onChange={(e) => setAmountA(e.target.value)}
+              placeholder={`Enter ${pool.tokenA} amount`}
+            />
+            <div className="balance">
+              <span>
+                Balance: {loading ? "Loading..." : balanceA?.toFixed(6)}
+              </span>
+              <button className="max-button" onClick={() => handleSetMax("A")}>
+                MAX
+              </button>
+            </div>
+          </div>
+          <div className="input-group">
+            <label>{pool.tokenB}</label>
+            <input
+              type="number"
+              value={amountB}
+              onChange={(e) => setAmountB(e.target.value)}
+              placeholder={`Enter ${pool.tokenB} amount`}
+            />
+            <div className="balance">
+              <span>
+                Balance: {loading ? "Loading..." : balanceB?.toFixed(6)}
+              </span>
+              <button className="max-button" onClick={() => handleSetMax("B")}>
+                MAX
+              </button>
+            </div>
           </div>
         </div>
-
-        <div className="input-group">
-          <label>{pool.tokenB}</label>
-          <input
-            type="number"
-            value={amountB}
-            onChange={(e) => setAmountB(e.target.value)}
-            placeholder={`Enter ${pool.tokenB} amount`}
-          />
-          <div className="balance">
-            <span>
-              Balance: {loading ? "Loading..." : balanceB?.toFixed(6)}
-            </span>
-            <button className="max-button" onClick={() => handleSetMax("B")}>
-              MAX
+        <div className="modal-footer">
+          <div className="button-group">
+            <button className="cancel" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              className="confirm"
+              onClick={handleConfirm}
+              disabled={!amountA || !amountB}
+            >
+              Deposit
             </button>
           </div>
-        </div>
-
-        <div className="button-group">
-          <button className="cancel" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            className="confirm"
-            onClick={handleConfirm}
-            disabled={!amountA || !amountB}
-          >
-            Deposit
-          </button>
         </div>
       </div>
     </div>

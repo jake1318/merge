@@ -17,6 +17,7 @@ const DEFAULT_DEX = "cetus";
 
 const Pools: React.FC = () => {
   const wallet = useWallet();
+
   const [defaultPools, setDefaultPools] = useState<PoolInfo[]>([]);
   const [searchResults, setSearchResults] = useState<PoolInfo[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -40,58 +41,73 @@ const Pools: React.FC = () => {
     isSuccess: boolean;
   } | null>(null);
 
+  // 1) Load pools
   useEffect(() => {
     async function fetchPools() {
       setLoading(true);
+      let fetchedPools: PoolInfo[] = [];
       try {
-        const pools = await coinGeckoService.getDefaultPools();
+        // a) fetch base pool data
+        fetchedPools = await coinGeckoService.getDefaultPools();
+
+        // b) extract available DEXes
         const dexes = Array.from(
-          new Set(pools.map((p) => p.dex.toLowerCase()))
-        );
-        setAvailableDexes(dexes.sort());
-        setDefaultPools(pools);
-        setLoading(false);
-        fetchTokenMetadata(pools);
-      } catch (error) {
-        console.error("Failed to load pools:", error);
+          new Set(fetchedPools.map((p) => p.dex.toLowerCase()))
+        ).sort();
+        setAvailableDexes(dexes);
+
+        // c) show raw pools immediately
+        setDefaultPools(fetchedPools);
+
+        // d) fetch token icons/metadata in background
+        fetchTokenMetadata(fetchedPools);
+      } catch (err) {
+        console.error("Failed to load pools:", err);
+      } finally {
         setLoading(false);
       }
     }
     fetchPools();
   }, []);
 
+  // 2) Fetch metadata for top tokens
   const fetchTokenMetadata = async (pools: PoolInfo[]) => {
     setLoadingMetadata(true);
     try {
       const tokenAddresses = new Set<string>();
-      const sortedPools = [...pools].sort(
-        (a, b) => b.liquidityUSD - a.liquidityUSD
-      );
-      const topPools = sortedPools.slice(0, MAX_TOKENS_FOR_METADATA);
+      // sort by liquidity to pick top N
+      const topPools = [...pools]
+        .sort((a, b) => b.liquidityUSD - a.liquidityUSD)
+        .slice(0, MAX_TOKENS_FOR_METADATA);
 
       topPools.forEach((pool) => {
         if (pool.tokenAAddress) tokenAddresses.add(pool.tokenAAddress);
         if (pool.tokenBAddress) tokenAddresses.add(pool.tokenBAddress);
       });
 
-      if (tokenAddresses.size > 0) {
+      if (tokenAddresses.size) {
         const metadata = await birdeyeService.getMultipleTokenMetadata(
           Array.from(tokenAddresses)
         );
         const enhanced = pools.map((pool) => ({
           ...pool,
-          tokenAMetadata: metadata[pool.tokenAAddress!] ?? pool.tokenAMetadata,
-          tokenBMetadata: metadata[pool.tokenBAddress!] ?? pool.tokenBMetadata,
+          tokenAMetadata: pool.tokenAAddress
+            ? metadata[pool.tokenAAddress]
+            : undefined,
+          tokenBMetadata: pool.tokenBAddress
+            ? metadata[pool.tokenBAddress]
+            : undefined,
         }));
         setDefaultPools(enhanced);
       }
-    } catch (error) {
-      console.error("Failed to fetch token metadata:", error);
+    } catch (err) {
+      console.error("Failed to fetch token metadata:", err);
     } finally {
       setLoadingMetadata(false);
     }
   };
 
+  // 3) Search handler
   const handleSearchSubmit = async () => {
     if (!searchTerm.trim()) {
       setSearchResults([]);
@@ -100,16 +116,16 @@ const Pools: React.FC = () => {
     setIsSearching(true);
     try {
       const results = await coinGeckoService.searchPools(searchTerm);
-      if (results.length === 0) {
+      if (!results.length) {
         setNotification({
           visible: true,
           message: `No pools found matching "${searchTerm}"`,
           isSuccess: false,
         });
         setSearchResults([]);
-        setIsSearching(false);
         return;
       }
+      // reuse any already-fetched metadata
       const enhanced = results.map((pool) => {
         const match = defaultPools.find(
           (p) =>
@@ -127,12 +143,11 @@ const Pools: React.FC = () => {
       });
       setSearchResults(enhanced);
 
+      // fetch metadata for any new tokens in results
       const newAddrs = new Set<string>();
-      enhanced.forEach((pool) => {
-        if (pool.tokenAAddress && !pool.tokenAMetadata)
-          newAddrs.add(pool.tokenAAddress);
-        if (pool.tokenBAddress && !pool.tokenBMetadata)
-          newAddrs.add(pool.tokenBAddress);
+      enhanced.forEach((p) => {
+        if (p.tokenAAddress && !p.tokenAMetadata) newAddrs.add(p.tokenAAddress);
+        if (p.tokenBAddress && !p.tokenBMetadata) newAddrs.add(p.tokenBAddress);
       });
       if (newAddrs.size) {
         setLoadingMetadata(true);
@@ -140,34 +155,34 @@ const Pools: React.FC = () => {
           Array.from(newAddrs)
         );
         setSearchResults((prev) =>
-          prev.map((pool) => ({
-            ...pool,
-            tokenAMetadata: pool.tokenAMetadata ?? meta[pool.tokenAAddress!],
-            tokenBMetadata: pool.tokenBMetadata ?? meta[pool.tokenBAddress!],
+          prev.map((p) => ({
+            ...p,
+            tokenAMetadata:
+              p.tokenAMetadata ||
+              (p.tokenAAddress ? meta[p.tokenAAddress] : undefined),
+            tokenBMetadata:
+              p.tokenBMetadata ||
+              (p.tokenBAddress ? meta[p.tokenBAddress] : undefined),
           }))
         );
-        setLoadingMetadata(false);
       }
 
-      if (selectedDex) {
-        const hasMatch = results.some(
-          (p) => p.dex.toLowerCase() === selectedDex.toLowerCase()
-        );
-        if (!hasMatch) {
-          setNotification({
-            visible: true,
-            message: `No ${selectedDex.toUpperCase()} pools found matching "${searchTerm}".`,
-            isSuccess: true,
-          });
-        }
+      // notify if DEX filter excludes all results
+      if (
+        selectedDex &&
+        !results.some((p) => p.dex.toLowerCase() === selectedDex.toLowerCase())
+      ) {
+        setNotification({
+          visible: true,
+          message: `No ${selectedDex.toUpperCase()} pools matched "${searchTerm}".`,
+          isSuccess: true,
+        });
       }
-    } catch (error) {
-      console.error("Search failed:", error);
+    } catch (err) {
+      console.error("Search failed:", err);
       setNotification({
         visible: true,
-        message: `Search failed: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`,
+        message: err instanceof Error ? err.message : "Unknown search error",
         isSuccess: false,
       });
     } finally {
@@ -175,7 +190,10 @@ const Pools: React.FC = () => {
     }
   };
 
-  const handleSortChange = (columnKey: typeof sortColumn) => {
+  // 4) Sorting & filtering
+  const handleSortChange = (
+    columnKey: "dex" | "liquidityUSD" | "volumeUSD" | "feesUSD" | "apr"
+  ) => {
     if (columnKey === sortColumn) {
       setSortOrder((o) => (o === "asc" ? "desc" : "asc"));
     } else {
@@ -184,19 +202,23 @@ const Pools: React.FC = () => {
     }
   };
 
-  const handleDexChange = (dex: string | null) => setSelectedDex(dex);
-  const handleResetFilters = () => {
-    setSelectedDex(DEFAULT_DEX);
-    setSearchResults([]);
-    setSearchTerm("");
+  const handleDexChange = (dex: string | null) => {
+    setSelectedDex(dex);
   };
 
+  const handleResetFilters = () => {
+    setSelectedDex(DEFAULT_DEX);
+    setSearchTerm("");
+    setSearchResults([]);
+  };
+
+  // 5) Deposit click → modal
   const handleDeposit = useCallback(
     (pool: PoolInfo) => {
       if (!wallet.connected) {
         setNotification({
           visible: true,
-          message: "Please connect your Sui wallet to deposit liquidity.",
+          message: "Connect your wallet first.",
           isSuccess: false,
         });
         return;
@@ -204,7 +226,7 @@ const Pools: React.FC = () => {
       if (pool.dex.toLowerCase() !== "cetus") {
         setNotification({
           visible: true,
-          message: `Deposits to ${pool.dex} pools are not fully supported yet.`,
+          message: `Only Cetus pools supported today.`,
           isSuccess: false,
         });
         return;
@@ -217,7 +239,7 @@ const Pools: React.FC = () => {
   const handleModalConfirm = async (amtA: number, amtB: number) => {
     if (!modalPool) return;
     try {
-      const result = await cetusService.deposit(
+      const res = await cetusService.deposit(
         wallet,
         modalPool.address,
         amtA,
@@ -227,18 +249,15 @@ const Pools: React.FC = () => {
       setModalPool(null);
       setNotification({
         visible: true,
-        message: `Deposit successful for ${modalPool.name}`,
-        txDigest: result.digest,
+        message: `Deposited into ${modalPool.name}`,
+        txDigest: res.digest,
         isSuccess: true,
       });
-    } catch (err: any) {
-      const msg =
-        err instanceof Error && err.message
-          ? err.message
-          : "Deposit failed, see console for details";
+    } catch (err) {
+      console.error(err);
       setNotification({
         visible: true,
-        message: `Deposit failed: ${msg}`,
+        message: err instanceof Error ? err.message : "Deposit failed",
         isSuccess: false,
       });
     }
@@ -247,106 +266,68 @@ const Pools: React.FC = () => {
   const handleModalClose = () => setModalPool(null);
   const handleNotificationClose = () => setNotification(null);
 
-  const currentPools =
+  // 6) prepare display
+  const baseList =
     searchTerm && searchResults.length > 0 ? searchResults : defaultPools;
-  const filteredPools = selectedDex
-    ? currentPools.filter(
-        (p) => p.dex.toLowerCase() === selectedDex.toLowerCase()
-      )
-    : currentPools;
-  const displayedPools = filteredPools.sort((a, b) => {
-    const vA = a[sortColumn] ?? 0;
-    const vB = b[sortColumn] ?? 0;
-    if (typeof vA === "string" && typeof vB === "string") {
-      return sortOrder === "asc" ? vA.localeCompare(vB) : vB.localeCompare(vA);
+  const filtered = selectedDex
+    ? baseList.filter((p) => p.dex.toLowerCase() === selectedDex.toLowerCase())
+    : baseList;
+  const displayed = [...filtered].sort((a, b) => {
+    const va = a[sortColumn] ?? 0;
+    const vb = b[sortColumn] ?? 0;
+    if (typeof va === "string" && typeof vb === "string") {
+      return sortOrder === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
     }
     return sortOrder === "asc"
-      ? (vA as number) - (vB as number)
-      : (vB as number) - (vA as number);
+      ? (va as number) - (vb as number)
+      : (vb as number) - (va as number);
   });
 
   return (
-    <div>
-      <div>
-        <div>
-          <h1>Liquidity Pools</h1>
-          <div>
-            <Link to="/">Pools</Link>
-            <Link to="/positions">My Positions</Link>
-          </div>
-        </div>
-        <div>
-          <SearchBar
-            value={searchTerm}
-            onChange={setSearchTerm}
-            onSubmit={handleSearchSubmit}
-            placeholder="🔍 Search for tokens, pools, or DEXes"
-            isSearching={isSearching}
-          />
-        </div>
+    <div className="pools-page">
+      <header>
+        <h1>Liquidity Pools</h1>
+        <nav>
+          <Link to="/" className="active">
+            Pools
+          </Link>
+          <Link to="/positions">My Positions</Link>
+        </nav>
+      </header>
+
+      <SearchBar
+        value={searchTerm}
+        onChange={setSearchTerm}
+        onSubmit={handleSearchSubmit}
+        placeholder="Search for tokens, pools, or DEXes"
+        isSearching={isSearching}
+      />
+
+      <div className="filters">
+        <label>
+          DEX:
+          <select
+            value={selectedDex || ""}
+            onChange={(e) => handleDexChange(e.target.value || null)}
+          >
+            {availableDexes.map((dex) => (
+              <option key={dex} value={dex}>
+                {dex.charAt(0).toUpperCase() + dex.slice(1)}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <button onClick={handleResetFilters}>Reset Filters</button>
       </div>
-
-      <div>
-        {availableDexes.length > 0 && (
-          <div>
-            <label>
-              DEX:
-              <select
-                value={selectedDex || ""}
-                onChange={(e) => handleDexChange(e.target.value || null)}
-              >
-                {availableDexes.map((dex) => (
-                  <option key={dex} value={dex}>
-                    {dex}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        )}
-
-        <div>
-          {isSearching ? (
-            <span>Searching...</span>
-          ) : searchResults.length > 0 ? (
-            <div>
-              <span>{searchResults.length} results</span>
-              <button
-                onClick={() => {
-                  setSearchResults([]);
-                  setSearchTerm("");
-                }}
-              >
-                Clear
-              </button>
-            </div>
-          ) : loadingMetadata ? (
-            <span>Loading token icons...</span>
-          ) : null}
-        </div>
-      </div>
-
-      {selectedDex && selectedDex.toLowerCase() !== "cetus" && (
-        <div>
-          <p>
-            Note: Currently only Cetus pools fully support deposits through our
-            interface. Support for {selectedDex} pools is coming soon.
-          </p>
-        </div>
-      )}
 
       {loading ? (
-        <div>
-          <p>Loading pools data...</p>
-        </div>
-      ) : displayedPools.length === 0 ? (
-        <div>
-          <p>No pools found with the current filters.</p>
-          <button onClick={handleResetFilters}>Reset Filters</button>
-        </div>
+        <p>Loading pools…</p>
+      ) : displayed.length === 0 ? (
+        <p>No pools found.</p>
       ) : (
         <PoolTable
-          pools={displayedPools}
+          pools={displayed}
           sortColumn={sortColumn}
           sortOrder={sortOrder}
           onSort={handleSortChange}

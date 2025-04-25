@@ -7,66 +7,66 @@ interface PoolRowProps {
 }
 
 const PoolRow: React.FC<PoolRowProps> = ({ pool, onDeposit }) => {
-  // Format values for display
+  // Format numeric values for display
   const liquidityStr =
     pool.liquidityUSD !== undefined
       ? pool.liquidityUSD.toLocaleString(undefined, {
-          style: "currency",
-          currency: "USD",
           maximumFractionDigits: 2,
         })
       : "-";
   const volumeStr =
     pool.volumeUSD !== undefined
-      ? pool.volumeUSD.toLocaleString(undefined, {
-          style: "currency",
-          currency: "USD",
-          maximumFractionDigits: 2,
-        })
+      ? pool.volumeUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })
       : "-";
   const feesStr =
     pool.feesUSD !== undefined
-      ? pool.feesUSD.toLocaleString(undefined, {
-          style: "currency",
-          currency: "USD",
-          maximumFractionDigits: 2,
-        })
+      ? pool.feesUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })
       : "-";
-  const aprStr =
-    pool.apr !== undefined
-      ? `${parseFloat(pool.apr.toString()).toFixed(2)}%`
-      : "-";
-  // Fee tier string
-  const feeTierStr =
-    pool.fee !== undefined
-      ? typeof pool.fee === "string"
-        ? pool.fee
-        : `${pool.fee}${pool.fee.toString().endsWith("%") ? "" : "%"}`
-      : "";
+  const aprStr = pool.apr !== undefined ? pool.apr.toFixed(2) + "%" : "-";
 
-  // Rewards tokens string (comma separated symbols)
-  const rewardsStr =
-    pool.rewardSymbols && pool.rewardSymbols.length > 0
-      ? pool.rewardSymbols.join(", ")
-      : "";
+  // Capitalize pool.dex for display
+  const dexName = pool.dex.charAt(0).toUpperCase() + pool.dex.slice(1);
+
+  // Extract fee tier percentage from pool name (if present)
+  const feeTierMatch = pool.name.match(/(\d+(\.\d+)?)%/);
+  const feeTier = feeTierMatch ? feeTierMatch[0] : "";
 
   return (
-    <tr>
+    <tr onClick={onDeposit}>
       <td>
-        <span className="pool-name-cell">
-          <span>{pool.name}</span>
-          {feeTierStr && <span className="fee-tier">{feeTierStr}</span>}
-        </span>
+        <div className="pool-pair">
+          <div className="token-icons">
+            {pool.tokenAMetadata?.logoUrl ? (
+              <img
+                src={pool.tokenAMetadata.logoUrl}
+                alt={pool.tokenA}
+                className="token-logo"
+              />
+            ) : (
+              <span className="token-fallback">{pool.tokenA.charAt(0)}</span>
+            )}
+            {pool.tokenBMetadata?.logoUrl ? (
+              <img
+                src={pool.tokenBMetadata.logoUrl}
+                alt={pool.tokenB}
+                className="token-logo"
+              />
+            ) : (
+              <span className="token-fallback">{pool.tokenB.charAt(0)}</span>
+            )}
+          </div>
+          <div>
+            <div className="pair-name">{pool.name}</div>
+            {feeTier && <div className="fee-tier">{feeTier}</div>}
+          </div>
+        </div>
       </td>
-      <td className="numeric">{liquidityStr}</td>
-      <td className="numeric">{volumeStr}</td>
-      <td className="numeric">{feesStr}</td>
-      <td>{rewardsStr || "–"}</td>
-      <td className="numeric">{aprStr}</td>
+      <td>{liquidityStr}</td>
+      <td>{volumeStr}</td>
+      <td>{feesStr}</td>
+      <td>{aprStr}</td>
       <td>
-        <button className="btn primary" onClick={onDeposit}>
-          Deposit
-        </button>
+        <button type="button">Deposit</button>
       </td>
     </tr>
   );
