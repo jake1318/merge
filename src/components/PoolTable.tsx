@@ -49,7 +49,7 @@ const PoolTable: React.FC<PoolTableProps> = ({
       }`}
       onClick={() => onSort(col)}
     >
-      {label}{" "}
+      {label}
       {sortColumn === col && (
         <span className="inline-block ml-0.5">
           {sortOrder === "asc" ? "↑" : "↓"}
@@ -107,7 +107,7 @@ const PoolTable: React.FC<PoolTableProps> = ({
         <thead>
           <tr className="border-b border-gray-700">
             <th className="text-left py-3 px-4">Pool</th>
-            {dexHeader()} {/* DEX dropdown instead of regular header */}
+            {dexHeader()}
             {header("Liquidity", "liquidityUSD", "text-right")}
             {header("Volume (24h)", "volumeUSD", "text-right")}
             {header("Fees (24h)", "feesUSD", "text-right")}
@@ -129,7 +129,7 @@ const PoolTable: React.FC<PoolTableProps> = ({
                 key={pool.address}
                 className="border-b border-gray-800 hover:bg-gray-800"
               >
-                {/* -------- Pool column (logos + pair name + fee tier) -------- */}
+                {/* Pool column (logos + pair name + fee tier) */}
                 <td className="py-4 px-4">
                   <div className="flex items-center gap-3">
                     {/* Token pair logos */}
@@ -160,7 +160,7 @@ const PoolTable: React.FC<PoolTableProps> = ({
                   </div>
                 </td>
 
-                {/* -------- DEX column (name + reward icons) -------- */}
+                {/* DEX column (name + reward icons) */}
                 <td className="py-4 px-4">
                   <div className="font-medium capitalize">{pool.dex}</div>
                   {/* Reward token badges */}
@@ -178,7 +178,7 @@ const PoolTable: React.FC<PoolTableProps> = ({
                   )}
                 </td>
 
-                {/* -------- Numbers -------- */}
+                {/* Numbers */}
                 <td className="text-right py-4 px-4">
                   {formatDollars(pool.liquidityUSD)}
                 </td>
@@ -194,13 +194,13 @@ const PoolTable: React.FC<PoolTableProps> = ({
                   </span>
                 </td>
 
-                {/* -------- Action -------- */}
+                {/* Action */}
                 <td className="text-right py-4 px-4">
                   <button
                     className={`px-4 py-2 rounded transition ${
                       isDexSupported(pool.dex)
-                        ? "bg-blue-600 text-white hover:bg-blue-700"
-                        : "bg-gray-700 text-gray-300 cursor-not-allowed"
+                        ? "btn btn--deposit"
+                        : "btn btn--coming-soon"
                     }`}
                     onClick={(e) => handleDepositClick(e, pool)}
                     disabled={!isDexSupported(pool.dex)}

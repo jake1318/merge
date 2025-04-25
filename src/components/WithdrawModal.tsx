@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { formatLargeNumber, formatDollars } from "../utils/formatters";
-import "../styles/components/Modals.scss";
+import "../styles/components/WithdrawModal.scss";
 
 interface WithdrawModalProps {
   isOpen: boolean;

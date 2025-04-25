@@ -9,7 +9,8 @@ import Swap from "./pages/Swap/Swap";
 import SearchPage from "./pages/SearchPage/SearchPage";
 import Dex from "./pages/Dex/Dex";
 import Portfolio from "./pages/PortfolioPage/PortfolioPage";
-import PoolsAndVaults from "./pages/PoolsAndVaults";
+import Pools from "./pages/PoolsPage/Pools";
+import Positions from "./pages/PoolsPage/Positions";
 import "./App.scss";
 
 function AppContent() {
@@ -28,7 +29,8 @@ function AppContent() {
             <Route path="/swap" element={<Swap />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/dex" element={<Dex />} />
-            <Route path="/pools-and-vaults" element={<PoolsAndVaults />} />
+            <Route path="/pools" element={<Pools />} />
+            <Route path="/positions" element={<Positions />} />
             <Route path="/portfolio" element={<Portfolio />} />
           </Routes>
         </main>

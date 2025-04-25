@@ -1,8 +1,10 @@
 import axios from "axios";
+import { getTokenMetadata, TokenMetadata } from "./birdeyeService";
 
 const BLOCKVISION_API_BASE_URL = "https://api.blockvision.org";
 const BLOCKVISION_API_KEY =
   import.meta.env.VITE_BLOCKVISION_API_KEY || "2ugIlviim3ywrgFI0BMniB9wdzU";
+const BLOCKVISION_BASE_URL = "https://api.blockvision.org/v2/sui";
 
 const blockvisionApi = axios.create({
   baseURL: BLOCKVISION_API_BASE_URL,
@@ -122,10 +124,6 @@ export const blockvisionService = {
 };
 
 export default blockvisionService;
-import { getTokenMetadata, TokenMetadata } from "./birdeyeService";
-
-const BLOCKVISION_API_KEY = "2ugIlviim3ywrgFI0BMniB9wdzU";
-const BLOCKVISION_BASE_URL = "https://api.blockvision.org/v2/sui";
 
 // Token price mapping - this could be fetched from an API
 const TOKEN_PRICES: Record<string, number> = {

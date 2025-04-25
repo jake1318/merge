@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom"; // Add this import
+import { Link } from "react-router-dom";
 import { useWallet } from "@suiet/wallet-kit";
-import * as cetusService from "../services/cetusService";
-import * as blockVisionService from "../services/blockVisionService";
-import { NormalizedPosition, PoolGroup } from "../services/blockVisionService";
-import WithdrawModal from "../components/WithdrawModal";
-import TransactionNotification from "../components/TransactionNotification";
-import { formatLargeNumber, formatDollars } from "../utils/formatters";
-import "../styles/pages/Positions.scss";
+import * as cetusService from "../../services/cetusService";
+import * as blockVisionService from "../../services/blockvisionService";
+import {
+  NormalizedPosition,
+  PoolGroup,
+} from "../../services/blockvisionService";
+import WithdrawModal from "../../components/WithdrawModal";
+import TransactionNotification from "../../components/TransactionNotification";
+import { formatLargeNumber, formatDollars } from "../../utils/formatters";
+import "../../styles/pages/Positions.scss";
 
 interface WithdrawModalState {
   isOpen: boolean;
