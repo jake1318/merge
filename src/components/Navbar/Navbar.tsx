@@ -75,10 +75,12 @@ const Navbar: React.FC = () => {
             Swap
           </Link>
           <Link
-            to="/pools"
-            className={location.pathname === "/pools" ? "active" : ""}
+            to="/pools-and-vaults"
+            className={
+              location.pathname === "/pools-and-vaults" ? "active" : ""
+            }
           >
-            Yield
+            Pools & Vaults
           </Link>
           <Link
             to="/dex"
@@ -177,11 +179,13 @@ const Navbar: React.FC = () => {
             Swap
           </Link>
           <Link
-            to="/pools"
-            className={location.pathname === "/pools" ? "active" : ""}
+            to="/pools-and-vaults"
+            className={
+              location.pathname === "/pools-and-vaults" ? "active" : ""
+            }
             onClick={() => setIsMobileMenuOpen(false)}
           >
-            Yield
+            Pools & Vaults
           </Link>
           <Link
             to="/dex"
