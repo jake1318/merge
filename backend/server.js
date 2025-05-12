@@ -5,6 +5,7 @@ import rateLimit from "express-rate-limit";
 import cors from "cors";
 import dotenv from "dotenv";
 import searchRouter from "./routes/search.js";
+import bluefinRouter from "./routes/bluefin.js"; // Import the Bluefin router
 
 dotenv.config();
 
@@ -19,30 +20,6 @@ if (!BIRDEYE_KEY) {
   process.exit(1);
 }
 
-// Enhanced error logging middleware
-app.use((req, res, next) => {
-  const originalSend = res.send;
-  res.send = function (data) {
-    console.log(
-      `Response for ${req.method} ${req.path}:`,
-      typeof data === "string" && data.length > 500
-        ? data.substring(0, 500) + "..."
-        : data
-    );
-    return originalSend.call(this, data);
-  };
-  next();
-});
-
-// Request logging middleware
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-  if (req.body && Object.keys(req.body).length > 0) {
-    console.log("Request body:", JSON.stringify(req.body, null, 2));
-  }
-  next();
-});
-
 // rate‑limit to 15 requests per second
 const birdeyeLimiter = rateLimit({
   windowMs: 1000,
@@ -50,6 +27,15 @@ const birdeyeLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: "Too many requests to Birdeye" },
+});
+
+// Bluefin rate limiter - less restrictive
+const bluefinLimiter = rateLimit({
+  windowMs: 1000,
+  max: 30, // Allow more requests per second for Bluefin
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: "Too many requests to Bluefin API" },
 });
 
 // shared axios client for Birdeye
@@ -67,8 +53,11 @@ app.use(express.json());
 // mount the Birdeye proxy under /api
 app.use("/api", birdeyeLimiter);
 
-// **mount search under `/api/search`**
+// mount search under `/api/search`
 app.use("/api/search", searchRouter);
+
+// mount Bluefin endpoints under `/api/bluefin` with a separate rate limiter
+app.use("/api/bluefin", bluefinLimiter, bluefinRouter);
 
 /**
  * Forwards the incoming request to Birdeye under the same query params + x‑chain header
@@ -109,20 +98,6 @@ app.use("/api/*", (_req, res) =>
   res.status(404).json({ success: false, message: "Not found" })
 );
 
-// Global error handler - place at the end of your server.js
-app.use((err, req, res, next) => {
-  console.error("Unhandled server error:", err);
-  res.status(500).json({
-    success: false,
-    error:
-      process.env.NODE_ENV === "production"
-        ? "Internal server error"
-        : `${err.message || "Unknown error"}`,
-  });
-});
-
 app.listen(PORT, () => {
   console.log(`🚀 Backend proxy listening on http://localhost:${PORT}`);
 });
-
-export default app;

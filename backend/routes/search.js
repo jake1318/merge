@@ -1,3 +1,4 @@
+// routes/search.js
 import express from "express";
 import axios from "axios";
 
@@ -11,13 +12,13 @@ router.get("/", async (req, res) => {
 
   try {
     const [aiRes, ytRes, googleRes] = await Promise.all([
-      // OpenAI GPT-4
+      // OpenAI GPT-4O (no max_tokens → full-length answers up to context limit)
       axios.post(
         "https://api.openai.com/v1/chat/completions",
         {
           model: "gpt-4o",
           messages: [{ role: "user", content: query }],
-          max_tokens: 100,
+          // max_tokens removed to allow full-length output
         },
         {
           headers: {
@@ -26,6 +27,7 @@ router.get("/", async (req, res) => {
           },
         }
       ),
+
       // YouTube Data API
       axios.get("https://www.googleapis.com/youtube/v3/search", {
         params: {
@@ -36,6 +38,7 @@ router.get("/", async (req, res) => {
           key: process.env.YOUTUBE_API_KEY,
         },
       }),
+
       // SerpAPI Google results
       axios.get("https://serpapi.com/search.json", {
         params: {
