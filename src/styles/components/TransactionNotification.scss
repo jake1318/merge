@@ -1,0 +1,239 @@
+// src/styles/components/TransactionNotification.scss
+// Last Updated: 2025-04-26 19:04:33 UTC by jake1318
+
+.transaction-notification {
+  display: flex;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background-color: var(--bg-card);
+  border: 1px solid transparent;
+  animation: fadeIn 0.3s ease-out;
+  width: 100%;
+  max-width: 600px;
+
+  &.success {
+    border-color: var(--color-success-border, #0c8);
+    background-color: var(--color-success-bg, rgba(0, 204, 136, 0.1));
+    color: var(--color-success-text, #0c8);
+  }
+
+  &.error {
+    border-color: var(--color-error-border, #f44);
+    background-color: var(--color-error-bg, rgba(255, 68, 68, 0.1));
+    color: var(--color-error-text, #f44);
+  }
+
+  .notification-content {
+    display: flex;
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .notification-icon {
+    margin-right: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    svg {
+      width: 24px;
+      height: 24px;
+    }
+  }
+
+  .notification-message {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+
+    .message-text {
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+      color: var(--text-primary);
+    }
+
+    .transaction-details {
+      display: flex;
+      flex-direction: column;
+      margin-top: 0.75rem;
+
+      .transaction-id {
+        display: flex;
+        align-items: center;
+        margin-bottom: 0.5rem;
+        font-family: monospace;
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+
+        .label {
+          margin-right: 0.5rem;
+        }
+
+        .value {
+          opacity: 0.8;
+        }
+      }
+
+      .transaction-link {
+        display: inline-flex;
+        align-items: center;
+        color: var(--color-primary);
+        text-decoration: none;
+        font-size: 0.9rem;
+        margin-top: 0.25rem;
+
+        &:hover {
+          text-decoration: underline;
+        }
+
+        svg {
+          margin-left: 0.4rem;
+          width: 14px;
+          height: 14px;
+        }
+      }
+    }
+  }
+
+  .close-button {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.25rem;
+    margin-left: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &:hover {
+      color: var(--text-primary);
+    }
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+  }
+}
+
+// Animation
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// Spinner for loading state
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: var(--color-primary);
+  animation: spin 1s ease-in-out infinite;
+  margin-right: 0.75rem;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// Responsive styling
+@media (max-width: 768px) {
+  .transaction-notification {
+    padding: 0.75rem;
+    max-width: 100%;
+
+    .transaction-details {
+      flex-direction: column;
+
+      .transaction-id,
+      .transaction-link {
+        font-size: 0.8rem;
+      }
+    }
+  }
+}
+
+// For use in modal
+.confirmation-screen {
+  padding: 1.5rem;
+  text-align: center;
+
+  .success-icon {
+    margin: 0 auto 1.5rem;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background-color: var(--color-success-bg, rgba(0, 204, 136, 0.1));
+    color: var(--color-success-text, #0c8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .confirmation-title {
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+    color: var(--text-primary);
+  }
+
+  .confirmation-message {
+    font-size: 1rem;
+    margin-bottom: 1.5rem;
+    color: var(--text-secondary);
+  }
+
+  .transaction-details {
+    background-color: var(--bg-card);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+
+    .transaction-id {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 0.75rem;
+
+      .hash {
+        font-family: monospace;
+        margin-left: 0.5rem;
+        opacity: 0.8;
+      }
+    }
+
+    .explorer-link {
+      display: inline-flex;
+      align-items: center;
+      color: var(--color-primary);
+      text-decoration: none;
+
+      &:hover {
+        text-decoration: underline;
+      }
+
+      svg {
+        margin-left: 0.4rem;
+      }
+    }
+  }
+
+  .confirmation-actions {
+    margin-top: 1.5rem;
+
+    .btn {
+      min-width: 120px;
+    }
+  }
+}
