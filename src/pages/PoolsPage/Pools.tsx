@@ -1,19 +1,23 @@
 // src/pages/Pools.tsx
-// Last Updated: 2025-04-29 23:31:55 UTC by jake1318
+// Last Updated: 2025-05-23 22:50:22 UTC by jake1318
 
 import React, { useState, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useWallet } from "@suiet/wallet-kit";
-import SearchBar from "../../components/SearchBar";
-import PoolTable from "../../components/PoolTable";
 import DepositModal from "../../components/DepositModal";
+import TurbosDepositModal from "../../components/TurbosDepositModal"; // Import the Turbos-specific modal
 import TransactionNotification from "../../components/TransactionNotification";
+import EnhancedTokenIcon from "../../components/EnhancedTokenIcon";
+import ProtocolBadge from "./ProtocolBadge";
+import { VaultSection } from "../../components/VaultSection";
 import { PoolInfo } from "../../services/coinGeckoService";
 import * as coinGeckoService from "../../services/coinGeckoService";
 import * as cetusService from "../../services/cetusService";
-import * as bluefinService from "../../services/bluefinService"; // Import Bluefin service
+import * as bluefinService from "../../services/bluefinService";
+import * as turbosService from "../../services/turbosService";
 import * as birdeyeService from "../../services/birdeyeService";
 import "../../styles/pages/Pools.scss";
+import "./protocolBadges.scss";
 
 // Define all supported DEXes from CoinGecko
 interface DexInfo {
@@ -22,7 +26,7 @@ interface DexInfo {
 }
 
 // Pre-defined list of DEXes that CoinGecko supports
-// Added Bluefin to the supported DEXes list
+// Keep Bluefin in the list since we want to display their pools
 const SUPPORTED_DEXES: DexInfo[] = [
   { id: "bluemove", name: "BlueMove" },
   { id: "cetus", name: "Cetus" },
@@ -30,11 +34,38 @@ const SUPPORTED_DEXES: DexInfo[] = [
   { id: "turbos-finance", name: "Turbos Finance" },
   { id: "bluefin", name: "Bluefin" },
   { id: "flow-x", name: "FlowX" },
+  { id: "aftermath", name: "Aftermath" },
+  { id: "alphafi", name: "AlphaFi" },
+  { id: "alphalend", name: "AlphaLend" },
+  { id: "bucket", name: "Bucket" },
+  { id: "haedal", name: "Haedal" },
+  { id: "kai", name: "Kai" },
+  { id: "navi", name: "Navi" },
+  { id: "scallop", name: "Scallop" },
+  { id: "suilend", name: "SuiLend" },
+  { id: "suistake", name: "Suistake" },
+  { id: "typus", name: "Typus" },
+  { id: "walrus", name: "Walrus" },
 ];
+
+const DEFAULT_TOKEN_ICON = "/assets/token-placeholder.png";
+
+// Define the tab types
+enum TabType {
+  POOLS = "pools",
+  MY_POSITIONS = "positions",
+  PORTFOLIO = "portfolio",
+  VAULTS = "vaults",
+}
 
 const Pools: React.FC = () => {
   const wallet = useWallet();
   const { connected, account } = wallet;
+  const navigate = useNavigate();
+
+  // State to track active tab
+  const [activeTab, setActiveTab] = useState<TabType>(TabType.POOLS);
+
   const [originalPools, setOriginalPools] = useState<PoolInfo[]>([]);
   const [pools, setPools] = useState<PoolInfo[]>([]);
   const [filteredPools, setFilteredPools] = useState<PoolInfo[]>([]);
@@ -44,13 +75,21 @@ const Pools: React.FC = () => {
     "liquidityUSD" | "volumeUSD" | "feesUSD" | "apr" | "dex"
   >("apr");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+
+  // State for deposit modals - separate state for each modal type
   const [isDepositModalOpen, setIsDepositModalOpen] = useState<boolean>(false);
+  const [isTurbosModalOpen, setIsTurbosModalOpen] = useState<boolean>(false);
   const [selectedPool, setSelectedPool] = useState<PoolInfo | null>(null);
+
   const [notification, setNotification] = useState<{
     message: string;
     isSuccess: boolean;
     txDigest?: string;
   } | null>(null);
+
+  // State for token balances to pass to deposit modals
+  const [tokenABalance, setTokenABalance] = useState<string>("0");
+  const [tokenBBalance, setTokenBBalance] = useState<string>("0");
 
   // Track selected DEX filter
   const [selectedDex, setSelectedDex] = useState<string | null>(null);
@@ -58,63 +97,72 @@ const Pools: React.FC = () => {
   // Add search debounce timer
   const [searchTimer, setSearchTimer] = useState<NodeJS.Timeout | null>(null);
 
-  // Currently supported DEXes for deposit - UPDATED TO INCLUDE BLUEFIN
-  const supportedDexes = ["cetus", "bluefin"]; // Added Bluefin support
+  // Cache BirdEye metadata for all token addresses
+  const [tokenMetadata, setTokenMetadata] = useState<Record<string, any>>({});
+
+  // Currently supported DEXes for deposit
+  const supportedDexes = ["cetus", "bluefin", "turbos-finance", "turbos"];
 
   // Set maximum number of pools to show in results
   const MAX_POOLS_TO_DISPLAY = 20;
 
+  // Handle navigation to other pages
+  const navigateToPage = (tab: TabType) => {
+    if (tab === TabType.MY_POSITIONS) {
+      navigate("/positions");
+    } else if (tab === TabType.PORTFOLIO) {
+      navigate("/portfolio");
+    } else if (tab === TabType.VAULTS) {
+      setActiveTab(TabType.VAULTS);
+    } else {
+      setActiveTab(TabType.POOLS);
+    }
+  };
+
   /** ------------------------------------------------------------
-   * Fetch pools, then pull missing token logos from Birdeye
+   * Fetch pools from CoinGecko + enrich with BirdEye logos
    * ----------------------------------------------------------- */
   const fetchPools = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. fetch the default pools
       const poolsData = await coinGeckoService.getDefaultPools();
+      console.log(`Fetched ${poolsData.length} pools from CoinGecko`);
 
-      // 2. figure out which token addresses still lack a logo
-      const addrSet = new Set<string>();
+      // Collect all token addresses
+      const addrs = new Set<string>();
       poolsData.forEach((p) => {
-        if (p.tokenAMetadata?.address && !p.tokenAMetadata.logo_uri)
-          addrSet.add(p.tokenAMetadata.address);
-        if (p.tokenBMetadata?.address && !p.tokenBMetadata.logo_uri)
-          addrSet.add(p.tokenBMetadata.address);
+        if (p.tokenAAddress) addrs.add(p.tokenAAddress);
+        if (p.tokenBAddress) addrs.add(p.tokenBAddress);
       });
 
-      if (addrSet.size > 0) {
-        try {
-          // 3. batch-fetch metadata for those tokens
-          const metaMap = await birdeyeService.getMultipleTokenMetadata(
-            Array.from(addrSet)
-          );
+      // Fetch BirdEye metadata in one batch
+      if (addrs.size) {
+        console.log(
+          `Fetching BirdEye metadata for ${addrs.size} token addresses`
+        );
+        const meta = await birdeyeService.getMultipleTokenMetadata(
+          Array.from(addrs)
+        );
+        console.log(
+          `Retrieved metadata for ${Object.keys(meta).length} tokens`
+        );
 
-          // 4. copy Birdeye logo_uri into each pool's token meta
-          poolsData.forEach((p) => {
-            const a = p.tokenAMetadata?.address;
-            const b = p.tokenBMetadata?.address;
-
-            if (a && metaMap[a]?.logo_uri) {
-              p.tokenAMetadata.logo_uri = metaMap[a].logo_uri;
-              // some components use .logoUrl
-              // @ts-ignore – PoolInfo didn't originally declare logoUrl
-              p.tokenAMetadata.logoUrl = metaMap[a].logo_uri;
-            }
-            if (b && metaMap[b]?.logo_uri) {
-              p.tokenBMetadata.logo_uri = metaMap[b].logo_uri;
-              // @ts-ignore
-              p.tokenBMetadata.logoUrl = metaMap[b].logo_uri;
-            }
-          });
-        } catch (err) {
-          console.error("Failed to load Birdeye logos:", err);
+        // Log a sample of the metadata to check format
+        if (Object.keys(meta).length > 0) {
+          const sampleKey = Object.keys(meta)[0];
+          console.log(`Sample metadata for ${sampleKey}:`, meta[sampleKey]);
         }
+
+        setTokenMetadata(meta);
       }
 
-      // 5. save to state - store original pools for reset functionality
+      // Save to state
       setOriginalPools(poolsData);
       setPools(poolsData);
-      setFilteredPools(poolsData);
+
+      // Sort by APR by default
+      const sortedPools = [...poolsData].sort((a, b) => b.apr - a.apr);
+      setFilteredPools(sortedPools.slice(0, MAX_POOLS_TO_DISPLAY));
     } catch (error) {
       console.error("Failed to fetch pools:", error);
     } finally {
@@ -128,8 +176,7 @@ const Pools: React.FC = () => {
   }, [fetchPools]);
 
   /**
-   * Fetch pools by DEX
-   * Gets top pools from a specific DEX
+   * Fetch pools by DEX + enrich with BirdEye logos
    */
   const fetchPoolsByDex = useCallback(
     async (dex: string) => {
@@ -137,123 +184,68 @@ const Pools: React.FC = () => {
       try {
         console.log(`Fetching top pools for DEX: ${dex}`);
 
-        // Try to use the existing data first for better UX
+        // Try to use cached data first
         const dexPools = originalPools.filter(
-          (pool) => pool.dex.toLowerCase() === dex.toLowerCase()
+          (p) => p.dex.toLowerCase() === dex.toLowerCase()
         );
-
         if (dexPools.length >= MAX_POOLS_TO_DISPLAY) {
-          // If we have enough pools from this DEX in our data, use that
-          console.log(
-            `Using cached data for ${dex} pools (${dexPools.length} pools available)`
-          );
-          // Sort by liquidity for better display
-          const sortedDexPools = [...dexPools].sort(
+          const sorted = [...dexPools].sort(
             (a, b) => b.liquidityUSD - a.liquidityUSD
           );
-          setPools(sortedDexPools);
-          setFilteredPools(sortedDexPools.slice(0, MAX_POOLS_TO_DISPLAY));
+          setPools(sorted);
+          setFilteredPools(sorted.slice(0, MAX_POOLS_TO_DISPLAY));
           setLoading(false);
           return;
         }
 
-        // Otherwise fetch new data for this DEX
-        console.log(`Not enough cached data, fetching top pools for ${dex}`);
-
-        // Fetch pools for the specific DEX from the API
+        // Otherwise fetch fresh
         const poolsByDex = await coinGeckoService.getPoolsByDex(
           dex,
           MAX_POOLS_TO_DISPLAY
         );
 
-        if (poolsByDex.length === 0) {
-          console.log(
-            `No pools returned from API for DEX: ${dex}, using filtered original data`
-          );
-          // If API returns empty, fall back to our original filtered data
-          setPools(dexPools);
-          setFilteredPools(dexPools.slice(0, MAX_POOLS_TO_DISPLAY));
-          setLoading(false);
-          return;
-        }
-
-        // Fetch logos if needed
-        const addrSet = new Set<string>();
+        // Collect addresses & fetch metadata
+        const addrs = new Set<string>();
         poolsByDex.forEach((p) => {
-          if (
-            p.tokenAAddress &&
-            (!p.tokenAMetadata?.logo_uri || !p.tokenAMetadata)
-          )
-            addrSet.add(p.tokenAAddress);
-          if (
-            p.tokenBAddress &&
-            (!p.tokenBMetadata?.logo_uri || !p.tokenBMetadata)
-          )
-            addrSet.add(p.tokenBAddress);
+          if (p.tokenAAddress) addrs.add(p.tokenAAddress);
+          if (p.tokenBAddress) addrs.add(p.tokenBAddress);
         });
-
-        if (addrSet.size > 0) {
-          try {
-            const metaMap = await birdeyeService.getMultipleTokenMetadata(
-              Array.from(addrSet)
-            );
-
-            poolsByDex.forEach((p) => {
-              const a = p.tokenAAddress;
-              const b = p.tokenBAddress;
-
-              if (a && metaMap[a]) {
-                if (!p.tokenAMetadata) p.tokenAMetadata = metaMap[a];
-                else p.tokenAMetadata.logo_uri = metaMap[a].logo_uri;
-              }
-              if (b && metaMap[b]) {
-                if (!p.tokenBMetadata) p.tokenBMetadata = metaMap[b];
-                else p.tokenBMetadata.logo_uri = metaMap[b].logo_uri;
-              }
-            });
-          } catch (err) {
-            console.error("Failed to load logos for DEX pools:", err);
-          }
+        if (addrs.size) {
+          const meta = await birdeyeService.getMultipleTokenMetadata(
+            Array.from(addrs)
+          );
+          setTokenMetadata((prev) => ({ ...prev, ...meta }));
         }
 
-        console.log(
-          `Successfully processed ${poolsByDex.length} pools for DEX ${dex}`
-        );
-
-        // Update pools with the DEX-specific pools
         setPools(poolsByDex);
         setFilteredPools(poolsByDex);
       } catch (error) {
         console.error(`Failed to fetch pools for DEX ${dex}:`, error);
-
-        // Fallback to filtering original pool data
+        // Fallback to cached
         const dexPools = originalPools.filter(
-          (pool) => pool.dex.toLowerCase() === dex.toLowerCase()
+          (p) => p.dex.toLowerCase() === dex.toLowerCase()
         );
-
-        console.log(
-          `Using ${dexPools.length} cached pools for DEX ${dex} due to API error`
-        );
-
         setPools(dexPools);
         setFilteredPools(dexPools.slice(0, MAX_POOLS_TO_DISPLAY));
       } finally {
         setLoading(false);
       }
     },
-    [originalPools, MAX_POOLS_TO_DISPLAY]
+    [originalPools]
   );
 
-  // Function to handle search with API call
+  /**
+   * Search pools + enrich with BirdEye logos
+   */
   const performSearch = useCallback(
     async (query: string) => {
       if (!query.trim()) {
-        // If search is empty, revert to default view based on selected DEX
         if (selectedDex) {
-          const dexPools = pools.filter(
-            (pool) => pool.dex.toLowerCase() === selectedDex.toLowerCase()
+          setFilteredPools(
+            pools.filter(
+              (p) => p.dex.toLowerCase() === selectedDex.toLowerCase()
+            )
           );
-          setFilteredPools(dexPools);
         } else {
           setFilteredPools(pools);
         }
@@ -262,204 +254,126 @@ const Pools: React.FC = () => {
 
       setLoading(true);
       try {
-        // Call the API to search pools with the maximum limit
         const searchResults = await coinGeckoService.searchPools(
           query,
           MAX_POOLS_TO_DISPLAY
         );
-
         console.log(`Search returned ${searchResults.length} results`);
 
-        // Apply DEX filter if selected
+        // Enrich logos
+        const addrs = new Set<string>();
+        searchResults.forEach((p) => {
+          if (p.tokenAAddress) addrs.add(p.tokenAAddress);
+          if (p.tokenBAddress) addrs.add(p.tokenBAddress);
+        });
+        if (addrs.size) {
+          const meta = await birdeyeService.getMultipleTokenMetadata(
+            Array.from(addrs)
+          );
+          setTokenMetadata((prev) => ({ ...prev, ...meta }));
+        }
+
         let result = searchResults;
         if (selectedDex) {
           result = result.filter(
-            (pool) => pool.dex.toLowerCase() === selectedDex.toLowerCase()
+            (p) => p.dex.toLowerCase() === selectedDex.toLowerCase()
           );
         }
-
-        // Apply sorting
         result.sort((a, b) => {
-          const valueA = a[sortColumn];
-          const valueB = b[sortColumn];
-
-          if (sortOrder === "asc") {
-            return valueA > valueB ? 1 : -1;
-          } else {
-            return valueA < valueB ? 1 : -1;
-          }
+          const va = a[sortColumn];
+          const vb = b[sortColumn];
+          if (sortOrder === "asc") return va > vb ? 1 : -1;
+          return va < vb ? 1 : -1;
         });
-
-        // Get token logos for search results if needed
-        const addrSet = new Set<string>();
-        result.forEach((p) => {
-          if (
-            p.tokenAAddress &&
-            (!p.tokenAMetadata?.logo_uri || !p.tokenAMetadata)
-          )
-            addrSet.add(p.tokenAAddress);
-          if (
-            p.tokenBAddress &&
-            (!p.tokenBMetadata?.logo_uri || !p.tokenBMetadata)
-          )
-            addrSet.add(p.tokenBAddress);
-        });
-
-        if (addrSet.size > 0) {
-          try {
-            const metaMap = await birdeyeService.getMultipleTokenMetadata(
-              Array.from(addrSet)
-            );
-
-            result.forEach((p) => {
-              const a = p.tokenAAddress;
-              const b = p.tokenBAddress;
-
-              if (a && metaMap[a]) {
-                if (!p.tokenAMetadata) p.tokenAMetadata = metaMap[a];
-                else p.tokenAMetadata.logo_uri = metaMap[a].logo_uri;
-              }
-              if (b && metaMap[b]) {
-                if (!p.tokenBMetadata) p.tokenBMetadata = metaMap[b];
-                else p.tokenBMetadata.logo_uri = metaMap[b].logo_uri;
-              }
-            });
-          } catch (err) {
-            console.error("Failed to load logos for search results:", err);
-          }
-        }
-
         setFilteredPools(result);
       } catch (error) {
         console.error("Error during search:", error);
-        // If API search fails, do client-side filtering (fallback)
-        const searchLower = query.toLowerCase();
+        // fallback filter
+        const lower = query.toLowerCase();
         let result = pools.filter(
-          (pool) =>
-            pool.tokenA.toLowerCase().includes(searchLower) ||
-            pool.tokenB.toLowerCase().includes(searchLower) ||
-            pool.name.toLowerCase().includes(searchLower) ||
-            pool.dex.toLowerCase().includes(searchLower) ||
-            (pool.rewardSymbols &&
-              pool.rewardSymbols.some((symbol) =>
-                symbol.toLowerCase().includes(searchLower)
-              ))
+          (p) =>
+            p.tokenA.toLowerCase().includes(lower) ||
+            p.tokenB.toLowerCase().includes(lower) ||
+            p.name.toLowerCase().includes(lower) ||
+            p.dex.toLowerCase().includes(lower) ||
+            p.rewardSymbols.some((s) => s.toLowerCase().includes(lower))
         );
-
-        // Apply DEX filter if selected
         if (selectedDex) {
           result = result.filter(
-            (pool) => pool.dex.toLowerCase() === selectedDex.toLowerCase()
+            (p) => p.dex.toLowerCase() === selectedDex.toLowerCase()
           );
         }
-
         setFilteredPools(result.slice(0, MAX_POOLS_TO_DISPLAY));
       } finally {
         setLoading(false);
       }
     },
-    [pools, selectedDex, sortColumn, sortOrder, MAX_POOLS_TO_DISPLAY]
+    [pools, selectedDex, sortColumn, sortOrder]
   );
 
-  // Handle search input with debounce
+  // Debounced search handler
   const handleSearch = useCallback(
     (query: string) => {
       setSearch(query);
-
-      // Clear previous timer
-      if (searchTimer) {
-        clearTimeout(searchTimer);
-      }
-
-      // Set a new timer for debouncing
-      const timer = setTimeout(() => {
-        performSearch(query);
-      }, 300); // 300ms debounce
-
-      setSearchTimer(timer);
+      if (searchTimer) clearTimeout(searchTimer);
+      const t = setTimeout(() => performSearch(query), 300);
+      setSearchTimer(t);
     },
     [searchTimer, performSearch]
   );
 
-  // Clean up timer on component unmount
-  useEffect(() => {
-    return () => {
-      if (searchTimer) {
-        clearTimeout(searchTimer);
-      }
-    };
-  }, [searchTimer]);
+  // Cleanup debounce on unmount
+  useEffect(
+    () => () => {
+      if (searchTimer) clearTimeout(searchTimer);
+    },
+    [searchTimer]
+  );
 
-  // Handle reset button click - fully functional now
+  // Reset filters
   const handleReset = useCallback(() => {
-    console.log("Resetting to original state");
-    setLoading(true);
-
-    // Clear search term
     setSearch("");
-
-    // Clear DEX filter
     setSelectedDex(null);
-
-    // Reset to default sort
     setSortColumn("apr");
     setSortOrder("desc");
-
-    // Reset to original data
     setPools(originalPools);
+    setFilteredPools(
+      [...originalPools]
+        .sort((a, b) => b.apr - a.apr)
+        .slice(0, MAX_POOLS_TO_DISPLAY)
+    );
+  }, [originalPools]);
 
-    // Apply default sorting to original data
-    const sortedPools = [...originalPools].sort((a, b) => b.apr - a.apr);
-    setFilteredPools(sortedPools.slice(0, MAX_POOLS_TO_DISPLAY));
-
-    setLoading(false);
-  }, [originalPools, MAX_POOLS_TO_DISPLAY]);
-
-  const handleSort = (
-    column: "liquidityUSD" | "volumeUSD" | "feesUSD" | "apr" | "dex"
-  ) => {
-    if (sortColumn === column) {
+  // Sorting
+  const handleSort = (col: typeof sortColumn) => {
+    if (sortColumn === col) {
       setSortOrder(sortOrder === "asc" ? "desc" : "asc");
     } else {
-      setSortColumn(column);
+      setSortColumn(col);
       setSortOrder("desc");
     }
   };
-
-  // Apply sorting effect
   useEffect(() => {
     setFilteredPools((prev) =>
       [...prev].sort((a, b) => {
-        const valueA = a[sortColumn];
-        const valueB = b[sortColumn];
-
-        if (sortOrder === "asc") {
-          return valueA > valueB ? 1 : -1;
-        } else {
-          return valueA < valueB ? 1 : -1;
-        }
+        const va = a[sortColumn],
+          vb = b[sortColumn];
+        if (sortOrder === "asc") return va > vb ? 1 : -1;
+        return va < vb ? 1 : -1;
       })
     );
   }, [sortColumn, sortOrder]);
 
-  // Updated handleDexChange to fetch pools by DEX
+  // DEX filter
   const handleDexChange = useCallback(
     (dex: string | null) => {
       setSelectedDex(dex);
-
       if (dex) {
-        // Fetch the top pools for this DEX
         fetchPoolsByDex(dex);
       } else {
-        // If DEX filter is cleared, reset to original pools
         setPools(originalPools);
-
-        // If there's an active search, re-run it
-        if (search.trim()) {
-          performSearch(search);
-        } else {
-          setFilteredPools(originalPools.slice(0, MAX_POOLS_TO_DISPLAY));
-        }
+        if (search.trim()) performSearch(search);
+        else setFilteredPools(originalPools.slice(0, MAX_POOLS_TO_DISPLAY));
       }
     },
     [
@@ -471,139 +385,340 @@ const Pools: React.FC = () => {
     ]
   );
 
-  const handleOpenDepositModal = (pool: PoolInfo) => {
+  /**
+   * Check if a pool is a Turbos pool
+   */
+  const isTurbosPool = (pool: PoolInfo): boolean => {
+    // Check if the pool belongs to Turbos Finance
+    return (
+      turbosService.isTurbosPool(pool.address, pool.dex) ||
+      pool.dex.toLowerCase() === "turbos" ||
+      pool.dex.toLowerCase() === "turbos-finance"
+    );
+  };
+
+  /**
+   * Fetch token balances for the deposit modals
+   */
+  const fetchTokenBalances = async (pool: PoolInfo) => {
+    if (!account?.address) return;
+
+    try {
+      // This is a simplified example - you might need to adjust this based on your actual API
+      const tokenABalance = await birdeyeService.getTokenBalance(
+        account.address,
+        pool.tokenAAddress || pool.tokenA
+      );
+      const tokenBBalance = await birdeyeService.getTokenBalance(
+        account.address,
+        pool.tokenBAddress || pool.tokenB
+      );
+
+      setTokenABalance(tokenABalance);
+      setTokenBBalance(tokenBBalance);
+    } catch (error) {
+      console.error("Failed to fetch token balances:", error);
+      setTokenABalance("0");
+      setTokenBBalance("0");
+    }
+  };
+
+  // Deposit modal
+  const handleOpenDepositModal = async (pool: PoolInfo) => {
     setSelectedPool(pool);
-    setIsDepositModalOpen(true);
+
+    // Fetch token balances
+    await fetchTokenBalances(pool);
+
+    // Check if this is a Turbos pool to determine which modal to open
+    if (isTurbosPool(pool)) {
+      console.log("Opening Turbos deposit modal for pool:", pool.address);
+      setIsTurbosModalOpen(true);
+    } else {
+      console.log("Opening standard deposit modal for pool:", pool.address);
+      setIsDepositModalOpen(true);
+    }
   };
 
   const handleCloseDepositModal = () => {
     setIsDepositModalOpen(false);
+    setIsTurbosModalOpen(false);
     setSelectedPool(null);
   };
 
-  // Updated to handle both token amounts and slippage, returns the transaction result
+  /**
+   * Determine which service to use based on the pool
+   */
+  const getServiceForPool = (pool: PoolInfo) => {
+    if (bluefinService.isBluefinPool(pool.address, pool.dex)) {
+      return bluefinService;
+    } else if (turbosService.isTurbosPool(pool.address, pool.dex)) {
+      return turbosService;
+    } else {
+      return cetusService; // Default to Cetus
+    }
+  };
+
+  /**
+   * Handle deposit submission from standard deposit modal
+   */
   const handleDeposit = async (
     amountA: string,
     amountB: string,
-    slippage: string
-  ): Promise<{ success: boolean; digest: string }> => {
+    slippage: string,
+    tickLower?: number,
+    tickUpper?: number,
+    deltaLiquidity?: string
+  ) => {
     if (!selectedPool || !connected || !account) {
-      console.error("Cannot deposit: missing pool, connection, or account");
+      console.error("Cannot deposit: missing context");
       return { success: false, digest: "" };
     }
-
     try {
       console.log("Initiating deposit to", selectedPool.address);
       console.log("Amount A:", amountA, selectedPool.tokenA);
       console.log("Amount B:", amountB, selectedPool.tokenB);
       console.log("Slippage:", slippage + "%");
 
-      // Parse the amount strings to numbers
-      const amountANum = parseFloat(amountA);
-      const amountBNum = parseFloat(amountB);
-      const slippageNum = parseFloat(slippage) / 100; // Convert percentage to decimal
+      if (tickLower !== undefined && tickUpper !== undefined) {
+        console.log("Tick Range:", tickLower, "to", tickUpper);
+      }
 
-      if (isNaN(amountANum) || isNaN(amountBNum)) {
+      const aNum = parseFloat(amountA);
+      const bNum = parseFloat(amountB);
+      if (isNaN(aNum) || isNaN(bNum)) {
         throw new Error("Invalid amount");
       }
 
-      // Determine which service to use based on the pool's DEX
-      const isDexBluefin = bluefinService.isBluefinPool(
-        selectedPool.address,
-        selectedPool.dex
-      );
-      const service = isDexBluefin ? bluefinService : cetusService;
+      // Determine which service to use
+      const service = getServiceForPool(selectedPool);
+      const serviceName =
+        service === bluefinService
+          ? "Bluefin"
+          : service === turbosService
+          ? "Turbos"
+          : "Cetus";
 
       console.log(
-        `Using ${isDexBluefin ? "Bluefin" : "Cetus"} service for deposit to ${
-          selectedPool.address
-        }`
+        `Using ${serviceName} service for deposit to ${selectedPool.address}`
       );
 
-      // Call the appropriate service's deposit function with both amounts
-      const txResult = await service.deposit(
-        wallet,
-        selectedPool.address,
-        amountANum,
-        amountBNum,
-        selectedPool
-      );
+      let txResult;
+
+      // Handle deposit based on the service
+      if (service === turbosService) {
+        // Turbos finance deposit
+        txResult = await service.deposit(
+          wallet,
+          selectedPool.address,
+          aNum,
+          bNum,
+          selectedPool,
+          tickLower,
+          tickUpper,
+          parseFloat(slippage) // Pass slippage percentage
+        );
+      } else if (service === bluefinService) {
+        // Bluefin deposit (doesn't use tick ranges)
+        txResult = await service.deposit(
+          wallet,
+          selectedPool.address,
+          aNum,
+          bNum,
+          selectedPool
+        );
+      } else {
+        // Cetus deposit
+        txResult = await service.deposit(
+          wallet,
+          selectedPool.address,
+          aNum,
+          bNum,
+          selectedPool,
+          tickLower,
+          tickUpper
+        );
+      }
 
       console.log("Deposit transaction completed:", txResult);
 
-      // Show notification on the main page as well
       setNotification({
         message: `Successfully deposited ${amountA} ${selectedPool.tokenA} and ${amountB} ${selectedPool.tokenB} to ${selectedPool.dex} pool`,
         isSuccess: true,
         txDigest: txResult.digest,
       });
 
-      // Refresh positions after a short delay to ensure chain updates are visible
+      // Refresh positions after a delay
       setTimeout(() => {
         if (account?.address) {
-          // If you have a fetchUserPositions function, call it here
-          // fetchUserPositions(account.address);
+          // Refresh positions logic would go here
         }
       }, 3000);
 
       return txResult;
-    } catch (error) {
-      console.error("Deposit failed:", error);
-
-      // Also show the error in the main page notification
+    } catch (err: any) {
+      console.error("Deposit failed:", err);
       setNotification({
-        message: `Failed to add liquidity: ${
-          error instanceof Error ? error.message : "Unknown error"
+        message: `Failed to deposit: ${
+          err instanceof Error ? err.message : "Unknown error"
         }`,
         isSuccess: false,
       });
+      throw err;
+    }
+  };
 
-      throw error; // Re-throw to let modal component handle it
+  /**
+   * Handle deposit submission from Turbos deposit modal
+   */
+  const handleTurbosDeposit = async (
+    poolId: string,
+    amountA: number,
+    amountB: number,
+    tickLower: number,
+    tickUpper: number,
+    slippage: number
+  ) => {
+    if (!selectedPool || !connected || !account) {
+      console.error("Cannot deposit: missing context");
+      return { success: false, digest: "" };
+    }
+
+    try {
+      console.log("Initiating Turbos deposit to", poolId);
+      console.log("Amount A:", amountA, selectedPool.tokenA);
+      console.log("Amount B:", amountB, selectedPool.tokenB);
+      console.log("Slippage:", slippage + "%");
+      console.log("Tick Range:", tickLower, "to", tickUpper);
+
+      // Use the Turbos service for the deposit
+      console.log("Using Turbos service for deposit to", poolId);
+
+      const result = await turbosService.deposit(
+        wallet,
+        poolId,
+        amountA,
+        amountB,
+        selectedPool, // Pass pool info
+        tickLower,
+        tickUpper,
+        slippage
+      );
+
+      if (result.success) {
+        setNotification({
+          message: `Successfully deposited ${amountA} ${selectedPool.tokenA} and ${amountB} ${selectedPool.tokenB} to Turbos pool`,
+          isSuccess: true,
+          txDigest: result.digest,
+        });
+
+        // Refresh positions after a delay
+        setTimeout(() => {
+          if (account?.address) {
+            // Refresh positions logic would go here
+          }
+        }, 3000);
+      }
+
+      return result;
+    } catch (err: any) {
+      console.error("Turbos deposit failed:", err);
+      setNotification({
+        message: `Failed to deposit: ${
+          err instanceof Error ? err.message : "Unknown error"
+        }`,
+        isSuccess: false,
+      });
+      throw err;
     }
   };
 
   const dismissNotification = () => setNotification(null);
 
-  // Helper function to determine APR color class
-  const getAprClass = (apr: number): string => {
+  const getAprClass = (apr: number) => {
     if (apr >= 100) return "high";
     if (apr >= 50) return "medium";
     return "low";
   };
 
-  // Helper function to check if a DEX is supported
-  const isDexSupported = (dex: string): boolean => {
-    return supportedDexes.includes(dex.toLowerCase());
-  };
-
-  // Get a prettier display name for a DEX
-  const getDexDisplayName = (dexId: string): string => {
-    const dex = SUPPORTED_DEXES.find(
-      (d) => d.id.toLowerCase() === dexId.toLowerCase()
+  const isDexSupported = (dex: string) => {
+    const normalizedDex = dex.toLowerCase();
+    return supportedDexes.some(
+      (supported) =>
+        normalizedDex === supported.toLowerCase() ||
+        normalizedDex.includes(supported.toLowerCase())
     );
-    if (dex) {
-      return dex.name;
-    }
-    // If not found in our predefined list, capitalize first letter
-    return dexId.charAt(0).toUpperCase() + dexId.slice(1);
   };
 
-  return (
-    <div className="pools-page">
-      <div className="content-container">
-        <div className="page-header">
-          <h1>Yield Generation</h1>
-        </div>
+  const getDexDisplayName = (id: string) => {
+    const d = SUPPORTED_DEXES.find(
+      (x) => x.id.toLowerCase() === id.toLowerCase()
+    );
+    return d ? d.name : id.charAt(0).toUpperCase() + id.slice(1);
+  };
 
-        <div className="tabs-navigation">
-          <Link to="/pools" className="tab-link active">
-            Pools
-          </Link>
-          <Link to="/positions" className="tab-link">
-            My Positions
-          </Link>
-        </div>
+  const normalizeProtocolName = (dexId: string) => {
+    const special: Record<string, string> = {
+      "flow-x": "flowx",
+      "turbos-finance": "turbos",
+      "kriya-dex": "kriya",
+    };
+    const norm = dexId.toLowerCase();
+    return special[norm] ?? norm.replace(/[-_]/g, "");
+  };
 
+  // Helper to get the best logo URL for a token
+  const getTokenLogoUrl = (pool: PoolInfo, isTokenA: boolean) => {
+    // First try to get token address
+    const address = isTokenA ? pool.tokenAAddress : pool.tokenBAddress;
+    const symbol = isTokenA ? pool.tokenA : pool.tokenB;
+
+    // For debugging, log what we have
+    console.debug(
+      `Getting logo for ${symbol} (${isTokenA ? "token A" : "token B"})${
+        address ? ` address ${address}` : ""
+      }`
+    );
+
+    // First try BirdEye metadata
+    if (address && tokenMetadata[address]) {
+      const metadata = tokenMetadata[address];
+
+      console.debug(`Found BirdEye metadata for ${symbol}`, metadata);
+
+      // Check all possible logo fields
+      if (metadata.logo_uri) return metadata.logo_uri;
+      if (metadata.logoUrl) return metadata.logoUrl;
+      if (metadata.logoURI) return metadata.logoURI;
+      if (metadata.logo) return metadata.logo;
+    } else if (address) {
+      console.debug(`No BirdEye metadata found for ${symbol} (${address})`);
+    }
+
+    // Then try pool metadata
+    const poolMetadata = isTokenA ? pool.tokenAMetadata : pool.tokenBMetadata;
+    if (poolMetadata) {
+      console.debug(`Found pool metadata for ${symbol}`, poolMetadata);
+
+      // Check all possible logo fields
+      const logo =
+        poolMetadata.logo_uri ||
+        poolMetadata.logoUrl ||
+        poolMetadata.logoURI ||
+        poolMetadata.logo;
+
+      if (logo) return logo;
+    }
+
+    // No logo found in metadata
+    console.debug(`No logo URL found for ${symbol}`);
+    return undefined;
+  };
+
+  // Render the pool content
+  const renderPoolContent = () => {
+    return (
+      <>
         <div className="controls-section">
           <div className="search-container">
             <div className="search-icon">
@@ -650,7 +765,6 @@ const Pools: React.FC = () => {
                 ))}
               </select>
             </div>
-
             <button className="action-button" onClick={handleReset}>
               Reset
             </button>
@@ -734,38 +848,26 @@ const Pools: React.FC = () => {
                       <td className="pool-cell">
                         <div className="pool-item">
                           <div className="token-icons">
-                            {pool.tokenAMetadata?.logo_uri ? (
-                              <div className="token-icon">
-                                <img
-                                  src={pool.tokenAMetadata.logo_uri}
-                                  alt={pool.tokenA}
-                                />
-                              </div>
-                            ) : (
-                              <div className="token-icon placeholder">
-                                {pool.tokenA.charAt(0)}
-                              </div>
-                            )}
-
-                            {pool.tokenBMetadata?.logo_uri ? (
-                              <div className="token-icon">
-                                <img
-                                  src={pool.tokenBMetadata.logo_uri}
-                                  alt={pool.tokenB}
-                                />
-                              </div>
-                            ) : (
-                              <div className="token-icon placeholder">
-                                {pool.tokenB.charAt(0)}
-                              </div>
-                            )}
+                            <EnhancedTokenIcon
+                              symbol={pool.tokenA}
+                              logoUrl={getTokenLogoUrl(pool, true)}
+                              address={pool.tokenAAddress}
+                              size="md"
+                              className="token-a"
+                            />
+                            <EnhancedTokenIcon
+                              symbol={pool.tokenB}
+                              logoUrl={getTokenLogoUrl(pool, false)}
+                              address={pool.tokenBAddress}
+                              size="md"
+                              className="token-b"
+                            />
                           </div>
-
                           <div className="pool-info">
                             <div className="pair-name">
                               {pool.tokenA} / {pool.tokenB}
                             </div>
-                            {pool.name && pool.name.match(/(\d+(\.\d+)?)%/) && (
+                            {pool.name?.match(/(\d+(\.\d+)?)%/) && (
                               <div className="fee-tier">
                                 {pool.name.match(/(\d+(\.\d+)?)%/)![0]}
                               </div>
@@ -775,9 +877,10 @@ const Pools: React.FC = () => {
                       </td>
 
                       <td>
-                        <span className={`dex-badge ${pool.dex.toLowerCase()}`}>
-                          {getDexDisplayName(pool.dex)}
-                        </span>
+                        <ProtocolBadge
+                          protocol={getDexDisplayName(pool.dex)}
+                          protocolClass={normalizeProtocolName(pool.dex)}
+                        />
                       </td>
 
                       <td className="align-right">
@@ -803,7 +906,11 @@ const Pools: React.FC = () => {
                               ? "btn--primary"
                               : "btn--secondary"
                           }`}
-                          onClick={() => handleOpenDepositModal(pool)}
+                          onClick={() =>
+                            isDexSupported(pool.dex)
+                              ? handleOpenDepositModal(pool)
+                              : undefined
+                          }
                           disabled={!isDexSupported(pool.dex) || !connected}
                         >
                           {isDexSupported(pool.dex) ? "Deposit" : "Coming Soon"}
@@ -816,14 +923,61 @@ const Pools: React.FC = () => {
             </table>
           </div>
         )}
+      </>
+    );
+  };
 
-        {selectedPool && (
+  return (
+    <div className="pools-page">
+      <div className="content-container">
+        <div className="main-navigation">
+          <div
+            className={`nav-link ${
+              activeTab === TabType.POOLS ? "active" : ""
+            }`}
+            onClick={() => navigateToPage(TabType.POOLS)}
+          >
+            Pools
+          </div>
+          <Link to="/positions" className="nav-link">
+            My Positions
+          </Link>
+          <Link to="/portfolio" className="nav-link">
+            Portfolio
+          </Link>
+          <div
+            className={`nav-link ${
+              activeTab === TabType.VAULTS ? "active" : ""
+            }`}
+            onClick={() => navigateToPage(TabType.VAULTS)}
+          >
+            Vaults
+          </div>
+        </div>
+
+        {activeTab === TabType.POOLS && renderPoolContent()}
+        {activeTab === TabType.VAULTS && <VaultSection />}
+
+        {/* Standard Deposit Modal for non-Turbos pools */}
+        {selectedPool && !isTurbosPool(selectedPool) && (
           <DepositModal
             isOpen={isDepositModalOpen}
             onClose={handleCloseDepositModal}
             onDeposit={handleDeposit}
             pool={selectedPool}
             walletConnected={connected}
+          />
+        )}
+
+        {/* Turbos-specific Deposit Modal */}
+        {selectedPool && isTurbosPool(selectedPool) && (
+          <TurbosDepositModal
+            visible={isTurbosModalOpen}
+            onCancel={handleCloseDepositModal}
+            onDeposit={handleTurbosDeposit}
+            poolInfo={selectedPool}
+            tokenABalance={tokenABalance}
+            tokenBBalance={tokenBBalance}
           />
         )}
 
@@ -846,7 +1000,6 @@ const Pools: React.FC = () => {
 function formatNumber(value: number, decimals: number = 2): string {
   if (!value && value !== 0) return "0";
   if (value > 0 && value < 0.01) return "<0.01";
-
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: decimals,
   }).format(value);

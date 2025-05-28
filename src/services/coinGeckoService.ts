@@ -1,4 +1,8 @@
+// src/services/coinGeckoService.ts
+// Last Updated: 2025-05-19 01:55:45 UTC by jake1318
+
 import { TokenMetadata } from "./birdeyeService";
+import * as birdeyeService from "./birdeyeService";
 
 export interface PoolInfo {
   address: string;
@@ -7,8 +11,18 @@ export interface PoolInfo {
   tokenB: string;
   tokenAAddress?: string;
   tokenBAddress?: string;
-  tokenAMetadata?: TokenMetadata;
-  tokenBMetadata?: TokenMetadata;
+  tokenAMetadata?: TokenMetadata & {
+    logo_uri?: string;
+    logoUrl?: string;
+    logoURI?: string;
+    logo?: string;
+  };
+  tokenBMetadata?: TokenMetadata & {
+    logo_uri?: string;
+    logoUrl?: string;
+    logoURI?: string;
+    logo?: string;
+  };
   dex: string;
   liquidityUSD: number;
   volumeUSD: number;
@@ -17,6 +31,7 @@ export interface PoolInfo {
   rewardSymbols: string[];
   totalLiquidity?: string;
   tvlUsd?: number;
+  _rawData?: any; // Store raw API response
 }
 
 // Updated CoinGecko Pro API endpoint
@@ -24,6 +39,9 @@ const COINGECKO_API_URL = "https://pro-api.coingecko.com/api/v3";
 const POOLS_ENDPOINT = "/onchain/pools/megafilter";
 const SEARCH_ENDPOINT = "/onchain/search/pools";
 const COINGECKO_API_KEY = "CG-RsxinQSgFE2ti5oXgH9CUZgp"; // Your API key from the fetch example
+
+// Default token icon placeholder
+const DEFAULT_TOKEN_ICON = "/assets/token-placeholder.png";
 
 // Map of common tokens to their Sui addresses
 const TOKEN_ADDRESSES: Record<string, string> = {
@@ -55,6 +73,50 @@ function extractTokenSymbols(poolName: string): [string, string] {
 }
 
 /**
+ * Extract token address from token ID
+ * Format: "sui-network_0x2::sui::SUI"
+ */
+function extractAddressFromId(id: string): string | undefined {
+  if (!id) return undefined;
+
+  try {
+    const parts = id.split("_");
+    if (parts.length >= 2) {
+      return parts[1]; // Return everything after the underscore
+    }
+  } catch (e) {
+    console.error(`Failed to extract address from ${id}:`, e);
+  }
+  return undefined;
+}
+
+/**
+ * Extract token symbol from token ID
+ * Format: "sui-network_0x2::sui::SUI"
+ */
+function extractSymbolFromId(id: string): string {
+  if (!id) return "Unknown";
+
+  try {
+    const parts = id.split("::");
+    if (parts.length >= 3) {
+      return parts[2]; // Return the last part which is typically the symbol
+    }
+    // Alternative parsing
+    const underscoreParts = id.split("_");
+    if (underscoreParts.length >= 2) {
+      const addressParts = underscoreParts[1].split("::");
+      if (addressParts.length >= 3) {
+        return addressParts[2];
+      }
+    }
+  } catch (e) {
+    console.error(`Failed to extract symbol from ${id}:`, e);
+  }
+  return "Unknown";
+}
+
+/**
  * Get token address from symbol or token ID
  */
 function getTokenAddress(tokenId: string, symbol?: string): string | undefined {
@@ -64,14 +126,7 @@ function getTokenAddress(tokenId: string, symbol?: string): string | undefined {
   }
 
   // Extract address from token ID if it's in the right format
-  if (tokenId && tokenId.includes("_")) {
-    const parts = tokenId.split("_");
-    if (parts.length >= 2) {
-      return parts[1]; // Return the actual token address part
-    }
-  }
-
-  return undefined;
+  return extractAddressFromId(tokenId);
 }
 
 /**
@@ -91,11 +146,143 @@ function calculateApr(
 }
 
 /**
+ * Helper function to enrich pools with Birdeye metadata
+ * This function will batch-fetch token metadata from Birdeye and
+ * merge it into the pool objects
+ */
+async function enrichPoolsWithMetadata(pools: PoolInfo[]): Promise<PoolInfo[]> {
+  try {
+    // 1) collect all on-chain addresses (deduped)
+    const addrs = new Set<string>();
+    for (const p of pools) {
+      if (p.tokenAAddress) addrs.add(p.tokenAAddress.toLowerCase());
+      if (p.tokenBAddress) addrs.add(p.tokenBAddress.toLowerCase());
+    }
+
+    // Skip if no addresses found
+    if (addrs.size === 0) {
+      console.log("No token addresses found for metadata enrichment");
+      return pools;
+    }
+
+    console.log(`Fetching metadata for ${addrs.size} tokens from Birdeye`);
+
+    // 2) fire one batch request
+    const rawMeta = await birdeyeService.getMultipleTokenMetadata(
+      Array.from(addrs)
+    );
+
+    console.log(`Received metadata for ${Object.keys(rawMeta).length} tokens`);
+
+    // 3) lowercase-normalize the keys
+    const normalizedMeta: Record<string, any> = {};
+    Object.entries(rawMeta).forEach(([addr, meta]) => {
+      normalizedMeta[addr.toLowerCase()] = meta;
+    });
+
+    // 4) merge into each pool
+    for (const p of pools) {
+      // Ensure metadata objects exist
+      if (!p.tokenAMetadata) {
+        p.tokenAMetadata = {
+          name: p.tokenA,
+          symbol: p.tokenA,
+          address: p.tokenAAddress,
+        };
+      }
+
+      if (!p.tokenBMetadata) {
+        p.tokenBMetadata = {
+          name: p.tokenB,
+          symbol: p.tokenB,
+          address: p.tokenBAddress,
+        };
+      }
+
+      // Apply token A metadata
+      const aKey = (
+        p.tokenAAddress ||
+        p.tokenAMetadata.address ||
+        ""
+      ).toLowerCase();
+      const mA = normalizedMeta[aKey];
+
+      if (mA && (mA.logo_uri || mA.logoURI || mA.logoUrl || mA.logo)) {
+        const logoUri = mA.logo_uri || mA.logoURI || mA.logoUrl || mA.logo;
+        p.tokenAMetadata.logo_uri = logoUri;
+        p.tokenAMetadata.logoUrl = logoUri;
+        p.tokenAMetadata.logoURI = logoUri;
+        p.tokenAMetadata.logo = logoUri;
+
+        // Fill in other metadata if missing
+        if (!p.tokenAMetadata.name && mA.name) {
+          p.tokenAMetadata.name = mA.name;
+        }
+        if (!p.tokenAMetadata.symbol && mA.symbol) {
+          p.tokenAMetadata.symbol = mA.symbol;
+        }
+        if (!p.tokenAMetadata.decimals && mA.decimals) {
+          p.tokenAMetadata.decimals = mA.decimals;
+        }
+      } else {
+        // Set default icon
+        p.tokenAMetadata.logo_uri = DEFAULT_TOKEN_ICON;
+        p.tokenAMetadata.logoUrl = DEFAULT_TOKEN_ICON;
+        p.tokenAMetadata.logoURI = DEFAULT_TOKEN_ICON;
+        p.tokenAMetadata.logo = DEFAULT_TOKEN_ICON;
+      }
+
+      // Apply token B metadata
+      const bKey = (
+        p.tokenBAddress ||
+        p.tokenBMetadata.address ||
+        ""
+      ).toLowerCase();
+      const mB = normalizedMeta[bKey];
+
+      if (mB && (mB.logo_uri || mB.logoURI || mB.logoUrl || mB.logo)) {
+        const logoUri = mB.logo_uri || mB.logoURI || mB.logoUrl || mB.logo;
+        p.tokenBMetadata.logo_uri = logoUri;
+        p.tokenBMetadata.logoUrl = logoUri;
+        p.tokenBMetadata.logoURI = logoUri;
+        p.tokenBMetadata.logo = logoUri;
+
+        // Fill in other metadata if missing
+        if (!p.tokenBMetadata.name && mB.name) {
+          p.tokenBMetadata.name = mB.name;
+        }
+        if (!p.tokenBMetadata.symbol && mB.symbol) {
+          p.tokenBMetadata.symbol = mB.symbol;
+        }
+        if (!p.tokenBMetadata.decimals && mB.decimals) {
+          p.tokenBMetadata.decimals = mB.decimals;
+        }
+      } else {
+        // Set default icon
+        p.tokenBMetadata.logo_uri = DEFAULT_TOKEN_ICON;
+        p.tokenBMetadata.logoUrl = DEFAULT_TOKEN_ICON;
+        p.tokenBMetadata.logoURI = DEFAULT_TOKEN_ICON;
+        p.tokenBMetadata.logo = DEFAULT_TOKEN_ICON;
+      }
+    }
+
+    return pools;
+  } catch (error) {
+    console.error("Failed to enrich pools with Birdeye metadata:", error);
+
+    // Return the original pools in case of error
+    return pools;
+  }
+}
+
+/**
  * Get default pools from CoinGecko Pro API
- * Last Updated: 2025-04-27 22:54:34 UTC by jake1318
+ * Last Updated: 2025-05-19 01:55:45 UTC by jake1318
  */
 export async function getDefaultPools(): Promise<PoolInfo[]> {
   try {
+    console.log("Fetching default pools from CoinGecko API");
+
     const response = await fetch(
       `${COINGECKO_API_URL}${POOLS_ENDPOINT}?page=1&networks=sui-network&sort=h6_trending&tx_count_duration=24h&buys_duration=24h&sells_duration=24h&include=base_token,quote_token,dex,network`,
       {
@@ -111,6 +298,7 @@ export async function getDefaultPools(): Promise<PoolInfo[]> {
     }
 
     const data = await response.json();
+    console.log(`Received ${data.data.length} pools from API`);
 
     if (!data.data || !Array.isArray(data.data)) {
       console.error("Unexpected API response format:", data);
@@ -118,22 +306,34 @@ export async function getDefaultPools(): Promise<PoolInfo[]> {
     }
 
     // Transform CoinGecko data to our PoolInfo format
-    return data.data.map((pool: any) => {
+    const pools = data.data.map((pool: any) => {
       // Extract token information
       const baseTokenId = pool.relationships?.base_token?.data?.id;
       const quoteTokenId = pool.relationships?.quote_token?.data?.id;
       const dexId = pool.relationships?.dex?.data?.id;
 
-      // Extract token symbols from pool name
-      const [tokenA, tokenB] = extractTokenSymbols(pool.attributes?.name);
+      // Extract token symbols from pool name or IDs
+      let tokenA, tokenB;
+      if (pool.attributes?.name) {
+        [tokenA, tokenB] = extractTokenSymbols(pool.attributes.name);
+      } else {
+        tokenA = extractSymbolFromId(baseTokenId);
+        tokenB = extractSymbolFromId(quoteTokenId);
+      }
 
-      // Get token addresses
-      const tokenAAddress = getTokenAddress(baseTokenId, tokenA);
-      const tokenBAddress = getTokenAddress(quoteTokenId, tokenB);
+      // Get token addresses directly from the relationships
+      const tokenAAddress = extractAddressFromId(baseTokenId);
+      const tokenBAddress = extractAddressFromId(quoteTokenId);
+
+      console.log(
+        `Pool ${
+          pool.attributes?.name || "Unknown"
+        }: ${tokenA}=${tokenAAddress}, ${tokenB}=${tokenBAddress}`
+      );
 
       // Calculate APR based on 24h volume and reserve
-      const volumeUSD = pool.attributes?.volume_usd?.h24 || 0;
-      const reserveUSD = pool.attributes?.reserve_in_usd || 0;
+      const volumeUSD = parseFloat(pool.attributes?.volume_usd?.h24 || "0");
+      const reserveUSD = parseFloat(pool.attributes?.reserve_in_usd || "0");
       let feePercent = 0.3; // Default fee percentage
 
       // Try to extract fee percentage from pool name if available
@@ -145,9 +345,30 @@ export async function getDefaultPools(): Promise<PoolInfo[]> {
       }
 
       const apr = calculateApr(volumeUSD, reserveUSD, feePercent);
-
-      // Calculate fee amount
       const feesUSD = volumeUSD * (feePercent / 100);
+
+      // Create token metadata structures
+      const tokenAMetadata = {
+        name: tokenA,
+        symbol: tokenA,
+        address: tokenAAddress,
+        // Add empty logo fields that will be populated later
+        logo_uri: DEFAULT_TOKEN_ICON,
+        logoUrl: DEFAULT_TOKEN_ICON,
+        logoURI: DEFAULT_TOKEN_ICON,
+        logo: DEFAULT_TOKEN_ICON,
+      };
+
+      const tokenBMetadata = {
+        name: tokenB,
+        symbol: tokenB,
+        address: tokenBAddress,
+        // Add empty logo fields that will be populated later
+        logo_uri: DEFAULT_TOKEN_ICON,
+        logoUrl: DEFAULT_TOKEN_ICON,
+        logoURI: DEFAULT_TOKEN_ICON,
+        logo: DEFAULT_TOKEN_ICON,
+      };
 
       return {
         address: pool.attributes?.address || pool.id,
@@ -156,16 +377,22 @@ export async function getDefaultPools(): Promise<PoolInfo[]> {
         tokenB,
         tokenAAddress,
         tokenBAddress,
+        tokenAMetadata,
+        tokenBMetadata,
         dex: dexId || "Unknown",
-        liquidityUSD: parseFloat(pool.attributes?.reserve_in_usd || 0),
-        volumeUSD: parseFloat(pool.attributes?.volume_usd?.h24 || 0),
+        liquidityUSD: parseFloat(pool.attributes?.reserve_in_usd || "0"),
+        volumeUSD: parseFloat(pool.attributes?.volume_usd?.h24 || "0"),
         feesUSD,
         apr,
         rewardSymbols: [], // CoinGecko doesn't provide reward info in this endpoint
         totalLiquidity: pool.attributes?.reserve_in_usd?.toString() || "0",
-        tvlUsd: parseFloat(pool.attributes?.reserve_in_usd || 0),
+        tvlUsd: parseFloat(pool.attributes?.reserve_in_usd || "0"),
+        _rawData: pool, // Store the raw data for additional processing
       };
     });
+
+    // Enrich with Birdeye metadata before returning
+    return await enrichPoolsWithMetadata(pools);
   } catch (error) {
     console.error("Failed to fetch pools from CoinGecko:", error);
     return [];
@@ -174,7 +401,7 @@ export async function getDefaultPools(): Promise<PoolInfo[]> {
 
 /**
  * Search pools using CoinGecko API - using the dedicated search endpoint
- * Last Updated: 2025-04-27 22:54:34 UTC by jake1318
+ * Last Updated: 2025-05-19 01:55:45 UTC by jake1318
  */
 export async function searchPools(
   query: string,
@@ -223,16 +450,27 @@ export async function searchPools(
     // Map the CoinGecko response to our PoolInfo format
     const pools: PoolInfo[] = data.data.map((pool: any) => {
       try {
-        // Extract token symbols and addresses
-        const baseTokenInfo = pool.relationships.base_token.data.id
-          .split("_")[1]
-          .split("::");
-        const quoteTokenInfo = pool.relationships.quote_token.data.id
-          .split("_")[1]
-          .split("::");
+        // Extract token addresses and symbols directly from relationships
+        const baseTokenId = pool.relationships?.base_token?.data?.id;
+        const quoteTokenId = pool.relationships?.quote_token?.data?.id;
 
-        const baseToken = baseTokenInfo[baseTokenInfo.length - 1];
-        const quoteToken = quoteTokenInfo[quoteTokenInfo.length - 1];
+        const tokenAAddress = extractAddressFromId(baseTokenId);
+        const tokenBAddress = extractAddressFromId(quoteTokenId);
+
+        // Extract token symbols
+        let tokenA = extractSymbolFromId(baseTokenId);
+        let tokenB = extractSymbolFromId(quoteTokenId);
+
+        // Alternatively, extract from pool name if available
+        if (pool.attributes?.name) {
+          const [nameTokenA, nameTokenB] = extractTokenSymbols(
+            pool.attributes.name
+          );
+          if (nameTokenA && nameTokenB) {
+            tokenA = nameTokenA;
+            tokenB = nameTokenB;
+          }
+        }
 
         // Calculate fees and APR
         const volume24h = parseFloat(pool.attributes?.volume_usd?.h24 || "0");
@@ -246,27 +484,35 @@ export async function searchPools(
           apr = dailyFeesPercent * 365;
         }
 
-        // Get token metadata if available
+        // Create token metadata structures
         const tokenAMetadata = {
-          name: baseToken,
-          symbol: baseToken,
-          address: pool.relationships.base_token.data.id.split("_")[1],
+          name: tokenA,
+          symbol: tokenA,
+          address: tokenAAddress,
+          logo_uri: DEFAULT_TOKEN_ICON,
+          logoUrl: DEFAULT_TOKEN_ICON,
+          logoURI: DEFAULT_TOKEN_ICON,
+          logo: DEFAULT_TOKEN_ICON,
         };
 
         const tokenBMetadata = {
-          name: quoteToken,
-          symbol: quoteToken,
-          address: pool.relationships.quote_token.data.id.split("_")[1],
+          name: tokenB,
+          symbol: tokenB,
+          address: tokenBAddress,
+          logo_uri: DEFAULT_TOKEN_ICON,
+          logoUrl: DEFAULT_TOKEN_ICON,
+          logoURI: DEFAULT_TOKEN_ICON,
+          logo: DEFAULT_TOKEN_ICON,
         };
 
         return {
           address: pool.attributes.address,
-          name: pool.attributes.name || `${baseToken} / ${quoteToken}`,
+          name: pool.attributes.name || `${tokenA} / ${tokenB}`,
           dex: pool.relationships.dex.data.id,
-          tokenA: baseToken || "Unknown",
-          tokenB: quoteToken || "Unknown",
-          tokenAAddress: pool.relationships.base_token.data.id.split("_")[1],
-          tokenBAddress: pool.relationships.quote_token.data.id.split("_")[1],
+          tokenA: tokenA || "Unknown",
+          tokenB: tokenB || "Unknown",
+          tokenAAddress,
+          tokenBAddress,
           tokenAMetadata,
           tokenBMetadata,
           liquidityUSD: reserveUsd,
@@ -274,6 +520,7 @@ export async function searchPools(
           feesUSD: feesUsd,
           apr: apr,
           rewardSymbols: [], // API doesn't provide reward info directly
+          _rawData: pool, // Store the raw API response
         };
       } catch (err) {
         console.error("Error processing pool data:", err);
@@ -296,7 +543,9 @@ export async function searchPools(
     console.log(
       `Successfully processed ${pools.length} pools matching search query`
     );
-    return pools;
+
+    // Enrich with Birdeye metadata before returning
+    return await enrichPoolsWithMetadata(pools);
   } catch (error) {
     console.error("Error searching pools:", error);
     // If the search API fails, fall back to client-side filtering
@@ -327,7 +576,7 @@ export async function searchPools(
 /**
  * Get pools by DEX
  * Fetches top pools for a specific DEX
- * Last Updated: 2025-04-27 22:54:34 UTC by jake1318
+ * Last Updated: 2025-05-19 01:55:45 UTC by jake1318
  */
 export async function getPoolsByDex(
   dex: string,
@@ -367,40 +616,20 @@ export async function getPoolsByDex(
     console.log(`Found ${data.data.length} pools for DEX ${dex}`);
 
     // Transform CoinGecko data to our PoolInfo format
-    return data.data
+    const pools = data.data
       .map((pool: any) => {
         // Extract token information from the relationships
-        const baseTokenData = pool.relationships?.base_token?.data;
-        const quoteTokenData = pool.relationships?.quote_token?.data;
+        const baseTokenId = pool.relationships?.base_token?.data?.id;
+        const quoteTokenId = pool.relationships?.quote_token?.data?.id;
         const dexData = pool.relationships?.dex?.data;
 
-        // Extract token symbols from token ids
-        let tokenA = "Unknown";
-        let tokenB = "Unknown";
-        let tokenAAddress = undefined;
-        let tokenBAddress = undefined;
+        // Extract token addresses
+        const tokenAAddress = extractAddressFromId(baseTokenId);
+        const tokenBAddress = extractAddressFromId(quoteTokenId);
 
-        if (baseTokenData?.id) {
-          const parts = baseTokenData.id.split("_");
-          if (parts.length > 1) {
-            const tokenParts = parts[1].split("::");
-            if (tokenParts.length > 0) {
-              tokenA = tokenParts[tokenParts.length - 1]; // Get last part as symbol
-              tokenAAddress = parts[1];
-            }
-          }
-        }
-
-        if (quoteTokenData?.id) {
-          const parts = quoteTokenData.id.split("_");
-          if (parts.length > 1) {
-            const tokenParts = parts[1].split("::");
-            if (tokenParts.length > 0) {
-              tokenB = tokenParts[tokenParts.length - 1]; // Get last part as symbol
-              tokenBAddress = parts[1];
-            }
-          }
-        }
+        // Extract token symbols
+        let tokenA = extractSymbolFromId(baseTokenId);
+        let tokenB = extractSymbolFromId(quoteTokenId);
 
         // Alternatively, extract from pool name if available
         if (pool.attributes?.name) {
@@ -414,8 +643,8 @@ export async function getPoolsByDex(
         }
 
         // Calculate APR based on 24h volume and reserve
-        const volumeUSD = parseFloat(pool.attributes?.volume_usd?.h24 || 0);
-        const reserveUSD = parseFloat(pool.attributes?.reserve_in_usd || 0);
+        const volumeUSD = parseFloat(pool.attributes?.volume_usd?.h24 || "0");
+        const reserveUSD = parseFloat(pool.attributes?.reserve_in_usd || "0");
         let feePercent = 0.3; // Default fee percentage
 
         // Try to extract fee percentage from pool name if available
@@ -427,8 +656,6 @@ export async function getPoolsByDex(
         }
 
         const apr = calculateApr(volumeUSD, reserveUSD, feePercent);
-
-        // Calculate fee amount
         const feesUSD = volumeUSD * (feePercent / 100);
 
         // Create token metadata structures
@@ -436,12 +663,20 @@ export async function getPoolsByDex(
           name: tokenA,
           symbol: tokenA,
           address: tokenAAddress,
+          logo_uri: DEFAULT_TOKEN_ICON,
+          logoUrl: DEFAULT_TOKEN_ICON,
+          logoURI: DEFAULT_TOKEN_ICON,
+          logo: DEFAULT_TOKEN_ICON,
         };
 
         const tokenBMetadata = {
           name: tokenB,
           symbol: tokenB,
           address: tokenBAddress,
+          logo_uri: DEFAULT_TOKEN_ICON,
+          logoUrl: DEFAULT_TOKEN_ICON,
+          logoURI: DEFAULT_TOKEN_ICON,
+          logo: DEFAULT_TOKEN_ICON,
         };
 
         return {
@@ -460,10 +695,14 @@ export async function getPoolsByDex(
           apr,
           rewardSymbols: [], // CoinGecko doesn't provide reward info in this endpoint
           totalLiquidity: pool.attributes?.reserve_in_usd?.toString() || "0",
-          tvlUsd: parseFloat(pool.attributes?.reserve_in_usd || 0),
+          tvlUsd: parseFloat(pool.attributes?.reserve_in_usd || "0"),
+          _rawData: pool,
         };
       })
       .slice(0, limit); // Apply the limit after transformation
+
+    // Enrich with Birdeye metadata before returning
+    return await enrichPoolsWithMetadata(pools);
   } catch (error) {
     console.error(`Failed to fetch pools for DEX ${dex}:`, error);
     return [];
@@ -472,7 +711,7 @@ export async function getPoolsByDex(
 
 /**
  * Get pools by addresses
- * Last Updated: 2025-04-27 22:54:34 UTC by jake1318
+ * Last Updated: 2025-05-19 01:55:45 UTC by jake1318
  */
 export async function getPoolsByAddresses(
   addresses: string[]
@@ -489,7 +728,7 @@ export async function getPoolsByAddresses(
 /**
  * Get aggregate statistics for all supported DEXes
  * Calculates total TVL, total pool count, and highest APR
- * Last Updated: 2025-04-27 22:54:34 UTC by jake1318
+ * Last Updated: 2025-05-19 01:55:45 UTC by jake1318
  */
 export async function getAggregatePoolStats(): Promise<{
   totalTvlUsd: number;
@@ -616,3 +855,92 @@ export async function getAggregatePoolStats(): Promise<{
     };
   }
 }
+
+/**
+ * Interface for token details returned from CoinGecko
+ */
+export interface CoinGeckoTokenDetails {
+  address: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  image_url?: string;
+  price_usd?: string;
+  market_cap_usd?: string;
+  coingecko_coin_id?: string;
+  // Add any other fields we might want to use
+}
+
+/**
+ * Get token details from CoinGecko API
+ * This function can be used as a fallback when BirdEye doesn't provide token metadata
+ * Last Updated: 2025-05-19 01:55:45 UTC by jake1318
+ */
+export async function getTokenDetailsFromCoingecko(
+  tokenAddress: string
+): Promise<CoinGeckoTokenDetails | null> {
+  try {
+    // Encode the token address properly for the URL
+    const encodedAddress = encodeURIComponent(tokenAddress);
+
+    console.log(`Fetching token details from CoinGecko for ${tokenAddress}`);
+
+    const options = {
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        "x-cg-pro-api-key": COINGECKO_API_KEY,
+      },
+    };
+
+    const response = await fetch(
+      `${COINGECKO_API_URL}/onchain/networks/sui-network/tokens/${encodedAddress}`,
+      options
+    );
+
+    if (!response.ok) {
+      console.warn(
+        `CoinGecko API error for token ${tokenAddress}: ${response.status}`
+      );
+      return null;
+    }
+
+    const responseData = await response.json();
+
+    if (responseData?.data?.attributes) {
+      const tokenData = responseData.data.attributes;
+
+      // Return formatted token details
+      return {
+        address: tokenData.address,
+        name: tokenData.name,
+        symbol: tokenData.symbol,
+        decimals: tokenData.decimals,
+        image_url: tokenData.image_url,
+        price_usd: tokenData.price_usd,
+        market_cap_usd: tokenData.market_cap_usd,
+        coingecko_coin_id: tokenData.coingecko_coin_id,
+      };
+    }
+
+    return null;
+  } catch (error) {
+    console.error(
+      `Failed to fetch token details from CoinGecko for ${tokenAddress}:`,
+      error
+    );
+    return null;
+  }
+}
+
+// Add the new function to the service export object
+export const coinGeckoService = {
+  // Existing methods
+  getDefaultPools,
+  searchPools,
+  getPoolsByDex,
+  getPoolsByAddresses,
+  getAggregatePoolStats,
+  getTokenDetailsFromCoingecko,
+  enrichPoolsWithMetadata, // Export the helper function too
+};

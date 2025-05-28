@@ -1,105 +1,286 @@
 /* src/pages/Dex/components/PairSelector.scss */
+
 .pair-selector {
-  background: #121212;
-  color: #fff;
+  background: rgba(5, 15, 30, 0.95); /* Made background more opaque */
+  border-radius: 16px;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  height: 100%;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid;
+  border-image: linear-gradient(
+      45deg,
+      rgba(0, 255, 255, 0.2),
+      rgba(255, 0, 255, 0.2)
+    )
+    1;
+  box-shadow: 0 8px 32px rgba(0, 255, 255, 0.1),
+    0 8px 32px rgba(255, 0, 255, 0.1);
+  overflow: hidden;
+  position: relative;
 
+  /* Add solid background to search bar */
   .search-bar {
-    padding: 0.5rem;
+    padding: 0.8rem 1rem;
+    position: relative;
+    flex: 0 0 auto;
+    z-index: 2;
+    background: rgba(5, 15, 30, 0.95); /* Match parent background */
+    border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+
     input {
       width: 100%;
-      padding: 0.4rem 0.6rem;
-      border: 1px solid #333;
-      border-radius: 4px;
-      background: #1e1e1e;
+      padding: 0.6rem 0.8rem;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.3);
       color: #fff;
       font-size: 0.9rem;
+
       &::placeholder {
-        color: #848e9c;
+        color: rgba(255, 255, 255, 0.4);
       }
+
       &:focus {
         outline: none;
-        border-color: #f0b90b;
-        box-shadow: 0 0 5px #f0b90b;
+        border-color: rgba(0, 255, 255, 0.5);
+        box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
       }
     }
   }
 
   .filter-bar {
     display: flex;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    padding: 0 0.5rem;
+    flex: 0 0 auto;
+    z-index: 2;
+    background: rgba(5, 15, 30, 0.95); /* Match parent background */
+
     button {
       flex: 1;
       background: none;
       border: none;
-      padding: 0.5rem;
-      color: #ccc;
+      padding: 0.6rem;
+      color: rgba(255, 255, 255, 0.6);
       cursor: pointer;
+      font-size: 0.9rem;
+      position: relative;
+
       &.active {
-        color: #f0b90b;
-        border-bottom: 2px solid #f0b90b;
-        font-weight: 600;
-      }
-      &:hover {
-        color: #fff;
+        color: #00ffff;
+        font-weight: 500;
+
+        &::after {
+          content: "";
+          position: absolute;
+          bottom: 0;
+          left: 15%;
+          width: 70%;
+          height: 2px;
+          background: linear-gradient(
+            90deg,
+            rgba(0, 255, 255, 0.3),
+            rgba(255, 0, 255, 0.7)
+          );
+        }
       }
     }
   }
 
+  /* Important - this is the scrollable container */
+  .pair-list-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: rgba(5, 15, 30, 0.7);
+  }
+
   .pair-list {
-    flex: 1 1 auto;
-    overflow-y: auto;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow-y: scroll;
+    overflow-x: hidden;
+    padding-right: 2px;
+    /* Add box shadow at the top to enhance separation */
+    box-shadow: inset 0 10px 10px -10px rgba(0, 0, 0, 0.5);
+
+    /* Explicitly define scrollbar styles for webkit browsers */
+    &::-webkit-scrollbar {
+      width: 10px;
+      background-color: rgba(5, 15, 30, 0.8);
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: linear-gradient(
+        to bottom,
+        rgba(0, 255, 255, 0.6),
+        rgba(255, 0, 255, 0.6)
+      );
+      border-radius: 10px;
+    }
+
+    &::-webkit-scrollbar-track {
+      background-color: rgba(0, 0, 0, 0.2);
+      border-radius: 10px;
+      margin: 2px;
+    }
+
+    /* Firefox scrollbar styles */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 255, 255, 0.6) rgba(5, 15, 30, 0.8);
+
     .pair-item {
-      display: grid;
-      grid-template-columns: 1.3fr 1fr 1fr;
-      padding: 0.5rem 0.75rem;
-      align-items: center;
+      display: flex;
+      justify-content: space-between;
+      padding: 0.75rem 1rem;
+      border-left: 3px solid transparent;
       cursor: pointer;
-      border-bottom: 1px solid #2a2a2a;
+      transition: all 0.2s ease;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      flex-shrink: 0;
+      min-height: 48px;
+
       &:hover {
-        background: #1e1e1e;
+        background: rgba(255, 255, 255, 0.05);
       }
+
       &.active {
-        background: #2a2a2a;
-        border-left: 4px solid #f0b90b;
+        background: rgba(0, 255, 255, 0.05);
+        border-left: 3px solid rgba(0, 255, 255, 0.7);
       }
-      .pair-symbol {
-        text-align: left;
+
+      .pair-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+
         .star {
-          margin-right: 4px;
-          color: #848e9c;
+          color: rgba(255, 255, 255, 0.3);
           cursor: pointer;
+          transition: all 0.3s;
+          font-size: 0.9rem;
+
           &.favorite {
-            color: #f0b90b;
-          }
-          &:hover {
-            color: #f0b90b;
+            color: rgba(0, 255, 255, 0.9);
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.6);
           }
         }
-      }
-      .pair-price {
-        text-align: right;
-        color: #fff;
-      }
-      .pair-change {
-        text-align: right;
-        &.positive {
-          color: #0ecb81;
-        }
-        &.negative {
-          color: #f6465d;
-        }
-        &.neutral {
+
+        .pair-symbol {
           color: #fff;
+          font-weight: 500;
+          font-size: 0.9rem;
+        }
+      }
+
+      .pair-stats {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+
+        .pair-price {
+          color: #fff;
+          font-family: "Courier New", monospace;
+          font-size: 0.9rem;
+          min-width: 80px;
+          text-align: right;
+        }
+
+        .pair-change {
+          min-width: 60px;
+          text-align: right;
+          font-size: 0.85rem;
+          font-weight: 500;
+
+          &.positive {
+            color: #00ff88;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.4);
+          }
+
+          &.negative {
+            color: #ff4d6d;
+            text-shadow: 0 0 10px rgba(255, 77, 109, 0.4);
+          }
+
+          &.neutral {
+            color: rgba(255, 255, 255, 0.7);
+          }
         }
       }
     }
-    .no-results {
+
+    .loading-indicator {
       padding: 1rem;
       text-align: center;
-      color: #555;
+      color: rgba(0, 255, 255, 0.7);
+      font-size: 0.9rem;
+      background: rgba(0, 0, 0, 0.2);
+      margin: 0.5rem;
+      border-radius: 4px;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    .no-results {
+      padding: 2rem 1rem;
+      text-align: center;
+      color: rgba(255, 255, 255, 0.4);
+      font-style: italic;
+    }
+  }
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.6;
+  }
+}
+
+@media (max-width: 768px) {
+  .pair-selector {
+    .search-bar {
+      padding: 0.6rem 0.8rem;
+
+      input {
+        padding: 0.5rem 0.7rem;
+        font-size: 0.85rem;
+      }
+    }
+
+    .filter-bar {
+      padding: 0;
+
+      button {
+        padding: 0.5rem;
+        font-size: 0.85rem;
+      }
+    }
+
+    .pair-list .pair-item {
+      padding: 0.5rem 0.8rem;
+
+      .pair-symbol {
+        font-size: 0.85rem;
+      }
+
+      .pair-price {
+        font-size: 0.8rem;
+      }
+
+      .pair-change {
+        font-size: 0.75rem;
+      }
     }
   }
 }
