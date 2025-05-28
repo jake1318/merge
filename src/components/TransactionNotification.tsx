@@ -1,5 +1,5 @@
 // src/components/TransactionNotification.tsx
-// Last Updated: 2025-04-26 19:04:33 UTC by jake1318
+// Last Updated: 2025-05-08 07:20:14 UTC by jake1318
 
 import React from "react";
 import "../styles/components/TransactionNotification.scss";
@@ -9,16 +9,21 @@ interface TransactionNotificationProps {
   isSuccess: boolean;
   txDigest?: string;
   onClose?: () => void;
+  asModal?: boolean; // New prop to control display mode
+  poolName?: string; // For showing additional context about the transaction
 }
 
 /**
  * Component to display transaction notifications with links to SuiVision explorer
+ * Can display as either an inline notification or a modal
  */
 const TransactionNotification: React.FC<TransactionNotificationProps> = ({
   message,
   isSuccess,
   txDigest,
   onClose,
+  asModal = false,
+  poolName,
 }) => {
   // Generate SuiVision link for the transaction
   const suiVisionLink = txDigest
@@ -32,6 +37,92 @@ const TransactionNotification: React.FC<TransactionNotificationProps> = ({
     return `${digest.substring(0, 8)}...${digest.substring(digest.length - 8)}`;
   };
 
+  // If showing as a modal, use the deposit-style confirmation screen
+  if (asModal && isSuccess) {
+    return (
+      <div className="modal-overlay">
+        <div className="transaction-modal">
+          <div className="modal-header">
+            <h3>
+              {message.includes("Close") ? "Close Position" : "Transaction"}
+            </h3>
+            <button
+              className="close-button"
+              onClick={onClose}
+              aria-label="Close"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24">
+                <path
+                  d="M18 6L6 18M6 6L18 18"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                />
+              </svg>
+            </button>
+          </div>
+
+          <div className="modal-success-content">
+            {/* Green checkmark icon */}
+            <div className="success-check-icon">
+              <svg
+                width="80"
+                height="80"
+                viewBox="0 0 80 80"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <circle
+                  cx="40"
+                  cy="40"
+                  r="38"
+                  stroke="#2EC37C"
+                  strokeWidth="4"
+                />
+                <path
+                  d="M24 40L34 50L56 28"
+                  stroke="#2EC37C"
+                  strokeWidth="6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+
+            {/* Success message */}
+            <h2 className="success-title">{message}</h2>
+
+            {/* Pool info */}
+            {poolName && <p className="success-message">{poolName}</p>}
+
+            {/* Transaction ID */}
+            {txDigest && (
+              <p className="transaction-id">Transaction ID: {txDigest}</p>
+            )}
+
+            {/* Action buttons */}
+            <div className="success-actions">
+              {txDigest && (
+                <a
+                  href={suiVisionLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="view-tx-link"
+                >
+                  View on SuiVision
+                </a>
+              )}
+
+              <button className="done-button" onClick={onClose}>
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Standard inline notification (original implementation)
   return (
     <div
       className={`transaction-notification ${isSuccess ? "success" : "error"}`}

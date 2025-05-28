@@ -1,99 +1,102 @@
+// src/components/PoolRow.tsx
+// Last Updated: 2025-05-03 07:57:55 UTC by jake1318
+
 import React from "react";
 import { PoolInfo } from "../services/coinGeckoService";
+import TokenIcon from "./TokenIcon";
 
 interface PoolRowProps {
   pool: PoolInfo;
-  onDeposit: () => void;
+  onDeposit: (pool: PoolInfo) => void;
+  isDexSupported: (dex: string) => boolean;
+  connected: boolean;
+  getAprClass: (apr: number) => string;
+  getDexDisplayName: (dexId: string) => string;
 }
 
-const PoolRow: React.FC<PoolRowProps> = ({ pool, onDeposit }) => {
-  // Format numeric values for display
-  const liquidityStr =
-    pool.liquidityUSD !== undefined
-      ? pool.liquidityUSD.toLocaleString(undefined, {
-          maximumFractionDigits: 2,
-        })
-      : "-";
-  const volumeStr =
-    pool.volumeUSD !== undefined
-      ? pool.volumeUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })
-      : "-";
-  const feesStr =
-    pool.feesUSD !== undefined
-      ? pool.feesUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })
-      : "-";
-  const aprStr = pool.apr !== undefined ? pool.apr.toFixed(2) + "%" : "-";
+const PoolRow: React.FC<PoolRowProps> = ({
+  pool,
+  onDeposit,
+  isDexSupported,
+  connected,
+  getAprClass,
+  getDexDisplayName,
+}) => {
+  // Helper function to format numbers with commas and limited decimal places
+  const formatNumber = (value: number, decimals: number = 2): string => {
+    if (!value && value !== 0) return "0";
+    if (value > 0 && value < 0.01) return "<0.01";
 
-  // Capitalize pool.dex for display
-  const dexName = pool.dex.charAt(0).toUpperCase() + pool.dex.slice(1);
-
-  // Extract fee tier percentage from pool name (if present)
-  const feeTierMatch = pool.name.match(/(\d+(\.\d+)?)%/);
-  const feeTier = feeTierMatch ? feeTierMatch[0] : "";
-
-  // Function to get logo URL from token metadata
-  const getTokenLogoUrl = (tokenMetadata: any): string | undefined => {
-    if (!tokenMetadata) return undefined;
-
-    // Check all possible property names for logo URL
-    return (
-      tokenMetadata.logoUrl ||
-      tokenMetadata.logo_uri ||
-      tokenMetadata.logoURI ||
-      tokenMetadata.logo
-    );
+    return new Intl.NumberFormat("en-US", {
+      maximumFractionDigits: decimals,
+    }).format(value);
   };
 
-  // Get token logo URLs
-  const tokenALogoUrl = getTokenLogoUrl(pool.tokenAMetadata);
-  const tokenBLogoUrl = getTokenLogoUrl(pool.tokenBMetadata);
-
   return (
-    <tr onClick={onDeposit}>
-      <td>
-        <div className="pool-pair">
+    <tr>
+      <td className="pool-cell">
+        <div className="pool-item">
           <div className="token-icons">
-            {tokenALogoUrl ? (
-              <img
-                src={tokenALogoUrl}
-                alt={pool.tokenA}
-                className="token-logo"
-              />
-            ) : (
-              <span className="token-fallback">{pool.tokenA.charAt(0)}</span>
-            )}
-            {tokenBLogoUrl ? (
-              <img
-                src={tokenBLogoUrl}
-                alt={pool.tokenB}
-                className="token-logo"
-              />
-            ) : (
-              <span className="token-fallback">{pool.tokenB.charAt(0)}</span>
-            )}
+            <TokenIcon
+              token={{
+                symbol: pool.tokenA,
+                name: pool.tokenA,
+                address: pool.tokenAMetadata?.address,
+              }}
+              metadata={pool.tokenAMetadata}
+              size="medium"
+            />
+            <TokenIcon
+              token={{
+                symbol: pool.tokenB,
+                name: pool.tokenB,
+                address: pool.tokenBMetadata?.address,
+              }}
+              metadata={pool.tokenBMetadata}
+              size="medium"
+            />
           </div>
-          <div>
+
+          <div className="pool-info">
             <div className="pair-name">
               {pool.tokenA} / {pool.tokenB}
             </div>
-            {feeTier && <div className="fee-tier">{feeTier}</div>}
+            {pool.name && pool.name.match(/(\d+(\.\d+)?)%/) && (
+              <div className="fee-tier">
+                {pool.name.match(/(\d+(\.\d+)?)%/)![0]}
+              </div>
+            )}
           </div>
         </div>
       </td>
-      <td>{dexName}</td>
-      <td>{liquidityStr}</td>
-      <td>{volumeStr}</td>
-      <td>{feesStr}</td>
-      <td>{aprStr}</td>
+
       <td>
+        <span className={`dex-badge ${pool.dex.toLowerCase()}`}>
+          {getDexDisplayName(pool.dex)}
+        </span>
+      </td>
+
+      <td className="align-right">${formatNumber(pool.liquidityUSD)}</td>
+
+      <td className="align-right">${formatNumber(pool.volumeUSD)}</td>
+
+      <td className="align-right">${formatNumber(pool.feesUSD)}</td>
+
+      <td className="align-right">
+        <span className={`apr-value ${getAprClass(pool.apr)}`}>
+          {formatNumber(pool.apr)}%
+        </span>
+      </td>
+
+      <td className="actions-cell">
         <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDeposit();
-          }}
+          className={`btn ${
+            isDexSupported(pool.dex) ? "btn--primary" : "btn--secondary"
+          }`}
+          onClick={() => (isDexSupported(pool.dex) ? onDeposit(pool) : null)}
+          disabled={!isDexSupported(pool.dex) || !connected}
         >
-          Deposit
+          {isDexSupported(pool.dex) ? "Deposit" : "Coming Soon"}
         </button>
       </td>
     </tr>

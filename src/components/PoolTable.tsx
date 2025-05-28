@@ -1,3 +1,6 @@
+// src/components/PoolTable.tsx
+// Last Updated: 2025-05-03 06:35:59 UTC by jake1318
+
 import React from "react";
 import { PoolInfo } from "../services/coinGeckoService";
 import "../styles/components/PoolTable.scss";
@@ -9,6 +12,18 @@ interface Props {
   onSortChange: (col: keyof PoolInfo) => void;
   onDeposit: (pool: PoolInfo) => void;
 }
+
+// Helper function to get the token logo URL
+const getTokenLogo = (metadata: any): string | null => {
+  if (!metadata) return null;
+  return (
+    metadata.logoUrl ||
+    metadata.logo_uri ||
+    metadata.logoURI ||
+    metadata.logo ||
+    null
+  );
+};
 
 const PoolTable: React.FC<Props> = ({
   pools,
@@ -25,6 +40,14 @@ const PoolTable: React.FC<Props> = ({
     { key: "apr", label: "APR" },
     { key: "action", label: "Action" },
   ];
+
+  // Function to handle image loading errors
+  const handleImageError = (
+    e: React.SyntheticEvent<HTMLImageElement, Event>
+  ) => {
+    e.currentTarget.style.display = "none";
+    e.currentTarget.nextElementSibling?.classList.remove("hidden");
+  };
 
   return (
     <table className="pool-table">
@@ -60,27 +83,61 @@ const PoolTable: React.FC<Props> = ({
           const m = p.name.match(/(\d+(\.\d+)?)%/);
           const feeTier = m ? m[0] : "";
 
+          // Get token logos
+          const tokenALogo = getTokenLogo(p.tokenAMetadata);
+          const tokenBLogo = getTokenLogo(p.tokenBMetadata);
+
           return (
             <tr key={p.address}>
               <td>
                 <div className="pair">
-                  <img
-                    src={p.tokenAMetadata?.logoUrl}
-                    alt={p.tokenA}
-                    className="logo"
-                  />
-                  <img
-                    src={p.tokenBMetadata?.logoUrl}
-                    alt={p.tokenB}
-                    className="logo"
-                  />
-                  <span className="name">{p.name}</span>
-                  <span className="fee">{feeTier}</span>
+                  <div className="token-icons">
+                    {tokenALogo ? (
+                      <>
+                        <img
+                          src={tokenALogo}
+                          alt={p.tokenA}
+                          className="logo"
+                          onError={handleImageError}
+                        />
+                        <div className="logo placeholder hidden">
+                          {p.tokenA.charAt(0)}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="logo placeholder">
+                        {p.tokenA.charAt(0)}
+                      </div>
+                    )}
+
+                    {tokenBLogo ? (
+                      <>
+                        <img
+                          src={tokenBLogo}
+                          alt={p.tokenB}
+                          className="logo"
+                          onError={handleImageError}
+                        />
+                        <div className="logo placeholder hidden">
+                          {p.tokenB.charAt(0)}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="logo placeholder">
+                        {p.tokenB.charAt(0)}
+                      </div>
+                    )}
+                  </div>
+                  <div className="pair-info">
+                    <span className="name">{p.name}</span>
+                    <span className="fee">{feeTier}</span>
+                  </div>
                 </div>
               </td>
-              <td>{p.liquidityUSD.toLocaleString()}</td>
-              <td>{p.volumeUSD.toLocaleString()}</td>
-              <td>{p.feesUSD.toLocaleString()}</td>
+              <td>{p.dex.charAt(0).toUpperCase() + p.dex.slice(1)}</td>
+              <td>${p.liquidityUSD.toLocaleString()}</td>
+              <td>${p.volumeUSD.toLocaleString()}</td>
+              <td>${p.feesUSD.toLocaleString()}</td>
               <td>{p.apr.toFixed(2)}%</td>
               <td>
                 <button onClick={() => onDeposit(p)}>Deposit</button>
